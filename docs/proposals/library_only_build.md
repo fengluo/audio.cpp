@@ -50,8 +50,9 @@ add_subdirectory(audio.cpp EXCLUDE_FROM_ALL)
 target_link_libraries(my_library PRIVATE engine_runtime)
 ```
 
-The option does not provide an install/export package. That is a separate build
-contract and should remain an independently reviewable change.
+The option does not itself provide an install/export package. That separate
+build contract is defined in [Installable CMake Runtime Package](install_export_package.md)
+and remains independently reviewable.
 
 ## Acceptance
 
