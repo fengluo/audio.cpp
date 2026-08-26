@@ -17,8 +17,10 @@ source/build paths in the exported targets file.
 
 The same fixture also passed on macOS arm64 with Metal enabled; its fresh
 consumer linked the exported Metal closure without naming a ggml target or a
-framework. Linux still needs the same fixture evidence before this is presented
-as an accepted upstream package contract.
+framework. It also passed in an Ubuntu 22.04 `linux/amd64` OrbStack container
+with portable CPU settings and OpenMP disabled. That Linux evidence establishes
+cross-platform package portability only: OrbStack emulates x86_64 on the local
+Apple Silicon host, so native Linux x64 remains required for acceptance.
 
 ## Goal
 
@@ -153,5 +155,5 @@ their respective backend capability results.
 - A deployment build and a non-deployment build retain their distinct model-spec
   behavior.
 - CPU and Metal acceptance runs pass before the interface is presented as a
-  supported downstream package; a Linux package-fixture run and native Linux
-  x64 model inference remain separate acceptance gates.
+  supported downstream package; the local emulated Linux package-fixture run
+  and native Linux x64 model inference remain separate acceptance gates.
