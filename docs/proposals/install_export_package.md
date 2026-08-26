@@ -15,8 +15,10 @@ consumer found only that prefix, linked `AudioCpp::engine_runtime`, and reported
 the mandatory `marblenet_vad,silero_vad` registry. The fixture also rejects
 source/build paths in the exported targets file.
 
-Metal and Linux configurations still need the same fixture evidence before this
-is presented as an accepted upstream package contract.
+The same fixture also passed on macOS arm64 with Metal enabled; its fresh
+consumer linked the exported Metal closure without naming a ggml target or a
+framework. Linux still needs the same fixture evidence before this is presented
+as an accepted upstream package contract.
 
 ## Goal
 
@@ -151,5 +153,5 @@ their respective backend capability results.
 - A deployment build and a non-deployment build retain their distinct model-spec
   behavior.
 - CPU and Metal acceptance runs pass before the interface is presented as a
-  supported downstream package; native Linux x64 model inference remains a
-  separate EchoASR dependency-acceptance gate.
+  supported downstream package; a Linux package-fixture run and native Linux
+  x64 model inference remain separate acceptance gates.
