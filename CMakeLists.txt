@@ -2,6 +2,11 @@ cmake_minimum_required(VERSION 3.20)
 
 project(AudioCpp LANGUAGES C CXX)
 
+include(GNUInstallDirs)
+include(CMakePackageConfigHelpers)
+
+set(AUDIOCPP_PACKAGE_VERSION "0.2.1")
+
 set(CMAKE_C_STANDARD 11)
 set(CMAKE_C_STANDARD_REQUIRED ON)
 set(CMAKE_C_EXTENSIONS OFF)
@@ -1477,13 +1482,15 @@ add_library(engine_runtime STATIC
     src/framework/runtime/registry.cpp
     ${AUDIOCPP_RUNTIME_OBJECTS}
 )
+target_compile_features(engine_runtime PUBLIC cxx_std_17)
 
 add_library(cjson_vendor STATIC
     external/cJSON/cJSON.c
 )
 
 target_include_directories(cjson_vendor PUBLIC
-    ${CMAKE_CURRENT_SOURCE_DIR}/external/cJSON
+    $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/external/cJSON>
+    $<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}/audiocpp/vendor/cjson>
 )
 
 # Native package management is deliberately opt-in. Normal CLI and server
@@ -1518,13 +1525,15 @@ add_library(yaml_vendor STATIC
 )
 
 target_include_directories(yaml_vendor PUBLIC
-    ${CMAKE_CURRENT_SOURCE_DIR}/external/libyaml/include
+    $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/external/libyaml/include>
+    $<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}/audiocpp/vendor/libyaml>
 )
 
 target_compile_definitions(yaml_vendor PUBLIC ${AUDIOCPP_LIBYAML_COMPILE_DEFINITIONS})
 
 target_include_directories(engine_runtime PUBLIC
-    ${CMAKE_CURRENT_SOURCE_DIR}/include
+    $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
+    $<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}>
 )
 target_include_directories(engine_runtime PRIVATE "${CMAKE_CURRENT_BINARY_DIR}/generated")
 
@@ -1571,6 +1580,73 @@ if (ENGINE_ENABLE_CUDA AND NOT ENGINE_ENABLE_HIP)
     target_compile_definitions(engine_runtime PUBLIC ENGINE_HAS_CUDA_ISTFT=1 ENGINE_HAS_CUDA_TORCH_RANDOM=1)
     target_link_libraries(engine_runtime PRIVATE CUDA::cudart CUDA::cufft)
 endif()
+
+# Keep the CMake package surface intentionally narrow: consumers link only
+# AudioCpp::engine_runtime, while the export set carries its configured static
+# closure. The list covers optional ggml backends without making a disabled
+# backend part of an installed package.
+set(AUDIOCPP_GGML_EXPORT_TARGETS ggml ggml-base)
+foreach(AUDIOCPP_GGML_TARGET IN ITEMS
+    ggml-cpu
+    ggml-blas
+    ggml-cann
+    ggml-cuda
+    ggml-hip
+    ggml-metal
+    ggml-musa
+    ggml-opencl
+    ggml-openvino
+    ggml-rpc
+    ggml-sycl
+    ggml-virtgpu
+    ggml-vulkan
+    ggml-webgpu
+    ggml-zdnn
+    ggml-zendnn
+)
+    if (TARGET ${AUDIOCPP_GGML_TARGET})
+        list(APPEND AUDIOCPP_GGML_EXPORT_TARGETS ${AUDIOCPP_GGML_TARGET})
+    endif()
+endforeach()
+
+install(TARGETS
+    engine_runtime
+    cjson_vendor
+    yaml_vendor
+    sentencepiece-static
+    ${AUDIOCPP_GGML_EXPORT_TARGETS}
+    EXPORT AudioCppTargets
+    ARCHIVE DESTINATION ${CMAKE_INSTALL_LIBDIR}
+    LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR}
+    RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}
+)
+install(DIRECTORY include/ DESTINATION ${CMAKE_INSTALL_INCLUDEDIR})
+install(FILES external/cJSON/cJSON.h
+    DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/audiocpp/vendor/cjson)
+install(FILES external/libyaml/include/yaml.h
+    DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/audiocpp/vendor/libyaml)
+
+set(AUDIOCPP_PACKAGE_OPENMP ${ENGINE_ENABLE_OPENMP})
+configure_package_config_file(
+    ${CMAKE_CURRENT_SOURCE_DIR}/cmake/AudioCppConfig.cmake.in
+    ${CMAKE_CURRENT_BINARY_DIR}/AudioCppConfig.cmake
+    INSTALL_DESTINATION ${CMAKE_INSTALL_LIBDIR}/cmake/AudioCpp
+)
+write_basic_package_version_file(
+    ${CMAKE_CURRENT_BINARY_DIR}/AudioCppConfigVersion.cmake
+    VERSION ${AUDIOCPP_PACKAGE_VERSION}
+    COMPATIBILITY SameMajorVersion
+)
+install(EXPORT AudioCppTargets
+    FILE AudioCppTargets.cmake
+    NAMESPACE AudioCpp::
+    DESTINATION ${CMAKE_INSTALL_LIBDIR}/cmake/AudioCpp
+)
+install(FILES
+    ${CMAKE_CURRENT_BINARY_DIR}/AudioCppConfig.cmake
+    ${CMAKE_CURRENT_BINARY_DIR}/AudioCppConfigVersion.cmake
+    DESTINATION ${CMAKE_INSTALL_LIBDIR}/cmake/AudioCpp
+)
 
 if (AUDIOCPP_BUILD_APPS)
 add_executable(audiocpp_cli
@@ -1870,6 +1946,14 @@ endif()
 
 if (ENGINE_BUILD_TESTS)
     enable_testing()
+
+    add_test(
+        NAME audiocpp_install_package
+        COMMAND ${CMAKE_COMMAND}
+            -DAUDIOCPP_SOURCE_DIR=${CMAKE_CURRENT_SOURCE_DIR}
+            -DAUDIOCPP_BINARY_DIR=${CMAKE_CURRENT_BINARY_DIR}
+            -P ${CMAKE_CURRENT_SOURCE_DIR}/cmake/ValidateInstallPackage.cmake
+    )
 
     if (AUDIOCPP_BUILD_APPS)
     add_test(

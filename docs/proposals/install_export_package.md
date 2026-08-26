@@ -7,9 +7,16 @@ or should not embed audio.cpp with `add_subdirectory()`. It deliberately follows
 the library-only build proposal: the two contracts solve different problems and
 must remain independently reviewable.
 
-The proposal does not add an install rule yet. It first fixes the boundary that
-such a rule must preserve, together with the downstream fixture that will decide
-whether an implementation is acceptable.
+The local candidate adds the install/export rule, `AudioCppConfig.cmake`,
+and the downstream fixture described below. A macOS arm64 CPU configuration with
+`AUDIOCPP_BUILD_APPS=OFF`, `AUDIOCPP_MODEL_SET=core`, portable CPU settings, and
+OpenMP disabled passed the fixture: it installed to a disposable prefix, a fresh
+consumer found only that prefix, linked `AudioCpp::engine_runtime`, and reported
+the mandatory `marblenet_vad,silero_vad` registry. The fixture also rejects
+source/build paths in the exported targets file.
+
+Metal and Linux configurations still need the same fixture evidence before this
+is presented as an accepted upstream package contract.
 
 ## Goal
 
