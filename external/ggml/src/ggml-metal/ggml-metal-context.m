@@ -81,6 +81,16 @@ struct ggml_metal {
     bool has_error;
 };
 
+static void ggml_metal_capture_stop(ggml_metal_t ctx) {
+    if (!ctx->capture_started) {
+        return;
+    }
+
+    [ctx->capture_scope endScope];
+    [[MTLCaptureManager sharedCaptureManager] stopCapture];
+    ctx->capture_started = false;
+}
+
 ggml_metal_t ggml_metal_init(ggml_metal_device_t dev) {
     GGML_LOG_INFO("%s: allocating\n", __func__);
 
@@ -565,6 +575,7 @@ enum ggml_status ggml_metal_graph_compute(ggml_metal_t ctx, struct ggml_cgraph *
                 if (status == MTLCommandBufferStatusError) {
                     GGML_LOG_INFO("error: %s\n", [[cmd_buf error].localizedDescription UTF8String]);
                 }
+                ggml_metal_capture_stop(ctx);
                 return GGML_STATUS_FAILED;
             }
 
@@ -575,6 +586,7 @@ enum ggml_status ggml_metal_graph_compute(ggml_metal_t ctx, struct ggml_cgraph *
                         ctx->cmd_bufs[pending].obj = nil;
                     }
                     GGML_LOG_INFO("%s: command buffer %d aborted\n", __func__, i);
+                    ggml_metal_capture_stop(ctx);
                     return GGML_STATUS_ABORTED;
                 }
 
@@ -589,6 +601,7 @@ enum ggml_status ggml_metal_graph_compute(ggml_metal_t ctx, struct ggml_cgraph *
                     if (status == MTLCommandBufferStatusError) {
                         GGML_LOG_INFO("error: %s\n", [[cmd_buf error].localizedDescription UTF8String]);
                     }
+                    ggml_metal_capture_stop(ctx);
                     return GGML_STATUS_FAILED;
                 }
             }
@@ -613,6 +626,7 @@ enum ggml_status ggml_metal_graph_compute(ggml_metal_t ctx, struct ggml_cgraph *
                         GGML_LOG_INFO("error: %s\n", [[cmd_buf error].localizedDescription UTF8String]);
                     }
 
+                    ggml_metal_capture_stop(ctx);
                     return GGML_STATUS_FAILED;
                 }
             }
@@ -628,15 +642,13 @@ enum ggml_status ggml_metal_graph_compute(ggml_metal_t ctx, struct ggml_cgraph *
                         GGML_LOG_INFO("error: %s\n", [[cmd_buf error].localizedDescription UTF8String]);
                     }
 
+                    ggml_metal_capture_stop(ctx);
                     return GGML_STATUS_FAILED;
                 }
 
             }
 
-            [ctx->capture_scope endScope];
-            [[MTLCaptureManager sharedCaptureManager] stopCapture];
-
-            ctx->capture_started = false;
+            ggml_metal_capture_stop(ctx);
         }
     }
 

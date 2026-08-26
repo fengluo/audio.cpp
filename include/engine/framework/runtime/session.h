@@ -57,14 +57,22 @@ struct TaskSpec {
 };
 
 struct TaskProgress {
+    // Overall task fraction in [0, 1]. Model integrations are responsible for
+    // reporting fractions monotonically for a single request.
     double fraction = 0.0;
+    // Stable semantic stage name. The string is owned by this event.
     std::string stage;
+    // Optional stage-local units. total == 0 means no unit total is available.
     int64_t completed = 0;
     int64_t total = 0;
 };
 
 struct TaskExecutionControl {
+    // Called synchronously on the inference thread. Exceptions fail closed and
+    // are treated as cancellation by cancellation helper/backend callbacks.
     std::function<bool()> cancellation_requested;
+    // Called synchronously on the inference thread. Exceptions propagate to the
+    // task caller. Do not mutate this control while a request is running.
     std::function<void(const TaskProgress &)> progress;
 };
 
@@ -86,10 +94,13 @@ void report_task_progress(
 
 class ScopedTaskExecutionControl {
 public:
+    // Installs the request's cancellation callback on the execution backend for
+    // this scope. Scopes must not overlap or nest on the same ExecutionContext,
+    // and installing/clearing a scope must not race graph execution there.
     ScopedTaskExecutionControl(
         engine::core::ExecutionContext & execution_context,
         std::shared_ptr<const TaskExecutionControl> control);
-    ~ScopedTaskExecutionControl();
+    ~ScopedTaskExecutionControl() noexcept;
 
     ScopedTaskExecutionControl(const ScopedTaskExecutionControl &) = delete;
     ScopedTaskExecutionControl & operator=(const ScopedTaskExecutionControl &) = delete;

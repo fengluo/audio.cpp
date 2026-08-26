@@ -4,6 +4,7 @@
 #include "test_assert.h"
 
 #include <atomic>
+#include <limits>
 #include <memory>
 #include <string>
 #include <vector>
@@ -42,6 +43,30 @@ void test_progress_and_cancellation_helpers() {
     require_eq(events[1].completed, int64_t{3}, "progress completed units");
     require_eq(events[1].total, int64_t{3}, "progress total units");
     require(!engine::runtime::task_cancellation_requested(control), "unexpected cancellation");
+
+    bool non_finite_rejected = false;
+    try {
+        engine::runtime::report_task_progress(
+            control,
+            std::numeric_limits<double>::quiet_NaN(),
+            "invalid");
+    } catch (const std::runtime_error &) {
+        non_finite_rejected = true;
+    }
+    require(non_finite_rejected, "non-finite progress must be rejected");
+
+    control->progress = [](const engine::runtime::TaskProgress &) {
+        throw std::runtime_error("consumer progress callback failure");
+    };
+    bool progress_exception_propagated = false;
+    try {
+        engine::runtime::report_task_progress(control, 0.5, "running");
+    } catch (const std::runtime_error &) {
+        progress_exception_propagated = true;
+    }
+    require(
+        progress_exception_propagated,
+        "progress callback exceptions must propagate to the task caller");
 
     control->cancellation_requested = []() -> bool {
         throw std::runtime_error("consumer callback failure");

@@ -85,7 +85,7 @@ ScopedTaskExecutionControl::ScopedTaskExecutionControl(
     }
 }
 
-ScopedTaskExecutionControl::~ScopedTaskExecutionControl() {
+ScopedTaskExecutionControl::~ScopedTaskExecutionControl() noexcept {
     if (backend_cancellation_installed_ && execution_context_ != nullptr) {
         (void) engine::core::set_backend_abort_callback(
             execution_context_->backend(), nullptr, nullptr);
