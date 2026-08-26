@@ -14,6 +14,9 @@ set(CMAKE_LIBRARY_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
 option(AUDIOCPP_DEPLOYMENT_BUILD
     "Compile model specs into the runtime for self-contained deployments"
     OFF)
+option(AUDIOCPP_BUILD_APPS
+    "Build the AudioCPP CLI, server, converters, and performance tools"
+    ON)
 
 # Model specs remain editable runtime data in normal builds. The converter always
 # carries the source catalog so the conversion binary is portable. Deployment builds
@@ -98,6 +101,10 @@ option(ENGINE_ENABLE_OPENMP "Build host code with OpenMP support" ON)
 option(AUDIOCPP_BUILD_NATIVE_MODEL_MANAGER
     "Build native model-manager tools and server download/install support"
     OFF)
+if (AUDIOCPP_BUILD_NATIVE_MODEL_MANAGER AND NOT AUDIOCPP_BUILD_APPS)
+    message(FATAL_ERROR
+        "AUDIOCPP_BUILD_NATIVE_MODEL_MANAGER requires AUDIOCPP_BUILD_APPS=ON")
+endif()
 option(AUDIOCPP_USE_SYSTEM_OPENSSL
     "Use system OpenSSL for native model management instead of bundled BoringSSL"
     OFF)
@@ -1469,7 +1476,7 @@ target_include_directories(cjson_vendor PUBLIC
 # builds do not configure an HTTP/TLS dependency. When enabled, package specs
 # remain embedded so the standalone manager and managed WebUI do not require a
 # source checkout or an external model_specs directory.
-if (AUDIOCPP_BUILD_NATIVE_MODEL_MANAGER)
+if (AUDIOCPP_BUILD_APPS AND AUDIOCPP_BUILD_NATIVE_MODEL_MANAGER)
     add_subdirectory(external/cpp-httplib)
     add_library(audiocpp_package_manager STATIC
         src/framework/package_manager/manager.cpp
@@ -1551,6 +1558,7 @@ if (ENGINE_ENABLE_CUDA AND NOT ENGINE_ENABLE_HIP)
     target_link_libraries(engine_runtime PRIVATE CUDA::cudart CUDA::cufft)
 endif()
 
+if (AUDIOCPP_BUILD_APPS)
 add_executable(audiocpp_cli
     app/cli/main.cpp
     app/cli/args.cpp
@@ -1673,6 +1681,7 @@ target_link_libraries(model_perf PRIVATE engine_runtime ggml)
 target_include_directories(model_perf PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
 if (ENGINE_ENABLE_OPENMP)
     target_link_libraries(model_perf PRIVATE OpenMP::OpenMP_CXX)
+endif()
 endif()
 
 add_executable(miocodec_wavlm_parity EXCLUDE_FROM_ALL
@@ -1848,6 +1857,7 @@ endif()
 if (ENGINE_BUILD_TESTS)
     enable_testing()
 
+    if (AUDIOCPP_BUILD_APPS)
     add_test(
         NAME audiocpp_cli_list_devices
         COMMAND audiocpp_cli --list-devices
@@ -1861,6 +1871,7 @@ if (ENGINE_BUILD_TESTS)
         audiocpp_server_list_devices
         PROPERTIES PASS_REGULAR_EXPRESSION "available_devices=[0-9]+"
     )
+    endif()
 
     set(ENGINE_UNITTEST_ASSET_ROOT "${CMAKE_CURRENT_SOURCE_DIR}/tests/unittests/assets")
 
@@ -2073,6 +2084,7 @@ if (ENGINE_BUILD_TESTS)
         COMMAND task_execution_control_test
     )
 
+    if (AUDIOCPP_BUILD_APPS)
     add_executable(streaming_audio_input_test
         tests/unittests/test_streaming_audio_input.cpp
         app/streaming/pcm_source.cpp
@@ -2103,6 +2115,7 @@ if (ENGINE_BUILD_TESTS)
     # This test talks to a real loopback socket, so a framing regression could
     # block forever rather than fail. Bound it so CI reports a failure instead.
     set_tests_properties(http_live_body_test PROPERTIES TIMEOUT 120)
+    endif()
 
     add_engine_unittest(partial_text_render_test tests/unittests/test_partial_text_render.cpp)
 
@@ -2345,7 +2358,7 @@ if (ENGINE_BUILD_TESTS)
             )
         endif()
     endif()
-    if (AUDIOCPP_FUN_ASR_NANO_TEST_GGUF)
+    if (AUDIOCPP_BUILD_APPS AND AUDIOCPP_FUN_ASR_NANO_TEST_GGUF)
         add_test(
             NAME fun_asr_nano_gguf_cli_cpu
             COMMAND audiocpp_cli
@@ -2492,6 +2505,7 @@ if (ENGINE_BUILD_TESTS)
         COMMAND asr_standalone_gguf_test
     )
 
+    if (AUDIOCPP_BUILD_APPS)
     add_executable(cli_request_options_test
         tests/unittests/test_cli_request_options.cpp
         app/cli/args.cpp
@@ -2560,6 +2574,7 @@ if (ENGINE_BUILD_TESTS)
         NAME server_config_test
         COMMAND server_config_test
     )
+    endif()
 
     add_engine_unittest(parakeet_golden_transcription_test tests/parakeet_tdt/test_golden_transcription.cpp)
     target_compile_definitions(parakeet_golden_transcription_test PRIVATE
