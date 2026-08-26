@@ -65,6 +65,7 @@ set(ENGINE_DEFAULT_ENABLE_METAL OFF)
 set(ENGINE_DEFAULT_ENABLE_LLAMAFILE ON)
 set(ENGINE_DEFAULT_ENABLE_CUDA_GRAPHS ON)
 set(ENGINE_DEFAULT_ENABLE_NATIVE_CPU ON)
+set(ENGINE_DEFAULT_ENABLE_OPENMP ON)
 if (APPLE)
     set(ENGINE_DEFAULT_ENABLE_METAL ON)
 endif()
@@ -86,6 +87,9 @@ endif()
 if (DEFINED GGML_CUDA_GRAPHS)
     set(ENGINE_DEFAULT_ENABLE_CUDA_GRAPHS ${GGML_CUDA_GRAPHS})
 endif()
+if (DEFINED GGML_OPENMP)
+    set(ENGINE_DEFAULT_ENABLE_OPENMP ${GGML_OPENMP})
+endif()
 
 option(ENGINE_ENABLE_CUDA "Build ggml with CUDA backend support" ${ENGINE_DEFAULT_ENABLE_CUDA})
 option(ENGINE_ENABLE_HIP "Build ggml with HIP/ROCm backend support" ${ENGINE_DEFAULT_ENABLE_HIP})
@@ -97,7 +101,17 @@ option(ENGINE_HIP_STRIX_HALO_OPTIMIZATIONS
     "Enable opt-in HIP optimizations validated only for Strix Halo (gfx1151)"
     OFF)
 option(ENGINE_ENABLE_NATIVE_CPU "Build ggml CPU kernels with native host ISA flags" ${ENGINE_DEFAULT_ENABLE_NATIVE_CPU})
-option(ENGINE_ENABLE_OPENMP "Build host code with OpenMP support" ON)
+option(ENGINE_ENABLE_OPENMP "Build host code with OpenMP support" ${ENGINE_DEFAULT_ENABLE_OPENMP})
+if (DEFINED GGML_OPENMP)
+    if ((ENGINE_ENABLE_OPENMP AND NOT GGML_OPENMP) OR
+        (NOT ENGINE_ENABLE_OPENMP AND GGML_OPENMP))
+        message(FATAL_ERROR
+            "ENGINE_ENABLE_OPENMP=${ENGINE_ENABLE_OPENMP} conflicts with "
+            "GGML_OPENMP=${GGML_OPENMP}; set only ENGINE_ENABLE_OPENMP or make both values match")
+    endif()
+endif()
+set(GGML_OPENMP ${ENGINE_ENABLE_OPENMP} CACHE BOOL
+    "Build ggml CPU kernels with OpenMP support" FORCE)
 option(AUDIOCPP_BUILD_NATIVE_MODEL_MANAGER
     "Build native model-manager tools and server download/install support"
     OFF)
@@ -246,7 +260,7 @@ if (ENGINE_ENABLE_CUDA AND NOT ENGINE_ENABLE_HIP)
     endif()
 endif()
 if (ENGINE_ENABLE_OPENMP)
-    find_package(OpenMP REQUIRED COMPONENTS CXX)
+    find_package(OpenMP REQUIRED COMPONENTS C CXX)
 endif()
 
 if (ENGINE_ENABLE_CPU_ALL_VARIANTS)

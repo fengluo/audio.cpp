@@ -220,7 +220,9 @@ void fill_torch_cuda_tensor_iterator_randn(
     const uint64_t stride = torch_cuda_tensor_iterator_stride(total, policy);
     const uint64_t loop_count = (total + stride * unroll_factor - 1) / (stride * unroll_factor);
     const int64_t parallel_count = static_cast<int64_t>(stride);
+#ifdef _OPENMP
 #pragma omp parallel for if (parallel_count >= 65536)
+#endif
     for (int64_t sequence_index = 0; sequence_index < parallel_count; ++sequence_index) {
         const uint64_t sequence = static_cast<uint64_t>(sequence_index);
         for (uint64_t loop_index = 0; loop_index < loop_count; ++loop_index) {

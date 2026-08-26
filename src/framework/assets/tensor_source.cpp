@@ -309,7 +309,9 @@ void set_backend_tensor_from_f32_parallel(
         std::vector<ggml_fp16_t> converted(values.size());
         const int64_t count = static_cast<int64_t>(values.size());
         const int64_t chunks = (count + kF32ConvertChunkElements - 1) / kF32ConvertChunkElements;
+#ifdef _OPENMP
         #pragma omp parallel for schedule(static)
+#endif
         for (int64_t chunk = 0; chunk < chunks; ++chunk) {
             const int64_t offset = chunk * kF32ConvertChunkElements;
             const int64_t length = std::min(kF32ConvertChunkElements, count - offset);
@@ -322,7 +324,9 @@ void set_backend_tensor_from_f32_parallel(
     std::vector<ggml_bf16_t> converted(values.size());
     const int64_t count = static_cast<int64_t>(values.size());
     const int64_t chunks = (count + kF32ConvertChunkElements - 1) / kF32ConvertChunkElements;
+#ifdef _OPENMP
     #pragma omp parallel for schedule(static)
+#endif
     for (int64_t chunk = 0; chunk < chunks; ++chunk) {
         const int64_t offset = chunk * kF32ConvertChunkElements;
         const int64_t length = std::min(kF32ConvertChunkElements, count - offset);

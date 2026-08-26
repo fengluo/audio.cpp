@@ -148,10 +148,12 @@ LoraMergeResult merged_f32_values(
     const auto base_read_started = std::chrono::steady_clock::now();
     auto values = base.require_f32(name, std::optional<std::vector<int64_t>>({delta.out, delta.in}));
     const double base_read_ms = engine::debug::elapsed_ms(base_read_started);
-    const int64_t merge_work_items = delta.out * delta.in * delta.r;
     // values[o, i] += scale * sum_k B[o, k] * A[k, i]
     const auto compute_started = std::chrono::steady_clock::now();
+#ifdef _OPENMP
+    const int64_t merge_work_items = delta.out * delta.in * delta.r;
     #pragma omp parallel for if(merge_work_items >= kParallelLoraMergeWorkItems) schedule(static)
+#endif
     for (int64_t o = 0; o < delta.out; ++o) {
         const int64_t row = o * delta.in;
         for (int64_t k = 0; k < delta.r; ++k) {
