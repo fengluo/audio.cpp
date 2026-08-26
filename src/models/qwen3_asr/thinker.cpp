@@ -769,7 +769,10 @@ struct Qwen3ASRThinkerRuntime::Impl {
     Qwen3ASRGeneratedTokens generate(
         const Qwen3ASRPrompt & prompt,
         const Qwen3ASRAudioEmbeddings & audio_embeddings,
-        const Qwen3ASRGenerationOptions & options) {
+        const Qwen3ASRGenerationOptions & options,
+        const std::shared_ptr<const runtime::TaskExecutionControl> & execution_control,
+        double progress_start,
+        double progress_end) {
         const auto & config = weights->assets().config.text_decoder;
         if (prompt.input_ids.empty()) {
             throw std::runtime_error("Qwen3 ASR thinker prompt is empty");
@@ -782,6 +785,7 @@ struct Qwen3ASRThinkerRuntime::Impl {
             throw std::runtime_error("Qwen3 ASR thinker request exceeds max_position_embeddings");
         }
         auto timing_start = Clock::now();
+        runtime::throw_if_task_cancelled(execution_control);
         validate_prompt_audio(prompt, audio_embeddings);
         debug::timing_log_scalar("qwen3_asr.thinker.prompt_prepare_ms", engine::debug::elapsed_ms(timing_start, Clock::now()));
         if (prefill_graph == nullptr || !prefill_graph->matches(*weights, prompt_steps, audio_embeddings.tokens)) {
@@ -803,6 +807,11 @@ struct Qwen3ASRThinkerRuntime::Impl {
             prompt.input_ids,
             audio_embeddings.values,
             prompt.audio_token_positions);
+        runtime::throw_if_task_cancelled(execution_control);
+        runtime::report_task_progress(
+            execution_control,
+            progress_start + (progress_end - progress_start) * 0.2,
+            "qwen3_asr.thinker.prefill");
         debug::timing_log_scalar("qwen3_asr.thinker.prefill_total_ms", engine::debug::elapsed_ms(timing_start, Clock::now()));
         const int64_t required_cache_steps = prompt_steps + options.max_new_tokens;
         if (decode_graph == nullptr || !decode_graph->can_run(*weights, required_cache_steps)) {
@@ -818,12 +827,22 @@ struct Qwen3ASRThinkerRuntime::Impl {
         std::vector<float> logits = std::move(prefill.logits);
         timing_start = Clock::now();
         for (int64_t step = 0; step < options.max_new_tokens; ++step) {
+            runtime::throw_if_task_cancelled(execution_control);
             const int32_t token = argmax_index(logits);
             if (is_eos(config, token)) {
                 break;
             }
             out.token_ids.push_back(token);
             logits = decode_graph->run_step(token);
+            runtime::throw_if_task_cancelled(execution_control);
+            runtime::report_task_progress(
+                execution_control,
+                progress_start + (progress_end - progress_start) *
+                    (0.2 + 0.8 * static_cast<double>(step + 1) /
+                        static_cast<double>(options.max_new_tokens)),
+                "qwen3_asr.thinker.decode",
+                step + 1,
+                options.max_new_tokens);
         }
         debug::timing_log_scalar("qwen3_asr.thinker.decode_total_ms", engine::debug::elapsed_ms(timing_start, Clock::now()));
         return out;
@@ -892,8 +911,17 @@ Qwen3ASRThinkerRuntime::~Qwen3ASRThinkerRuntime() = default;
 Qwen3ASRGeneratedTokens Qwen3ASRThinkerRuntime::generate(
     const Qwen3ASRPrompt & prompt,
     const Qwen3ASRAudioEmbeddings & audio_embeddings,
-    const Qwen3ASRGenerationOptions & options) {
-    return impl_->generate(prompt, audio_embeddings, options);
+    const Qwen3ASRGenerationOptions & options,
+    const std::shared_ptr<const runtime::TaskExecutionControl> & execution_control,
+    double progress_start,
+    double progress_end) {
+    return impl_->generate(
+        prompt,
+        audio_embeddings,
+        options,
+        execution_control,
+        progress_start,
+        progress_end);
 }
 
 std::vector<int32_t> Qwen3ASRThinkerRuntime::classify_prompt(

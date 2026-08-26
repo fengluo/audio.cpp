@@ -2065,6 +2065,14 @@ if (ENGINE_BUILD_TESTS)
         COMMAND backend_device_resolution_test
     )
 
+    add_engine_unittest(task_execution_control_test tests/unittests/test_task_execution_control.cpp)
+    target_include_directories(task_execution_control_test PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/tests/unittests)
+
+    add_test(
+        NAME task_execution_control_test
+        COMMAND task_execution_control_test
+    )
+
     add_executable(streaming_audio_input_test
         tests/unittests/test_streaming_audio_input.cpp
         app/streaming/pcm_source.cpp

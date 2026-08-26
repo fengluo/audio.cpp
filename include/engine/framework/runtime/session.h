@@ -7,7 +7,9 @@
 #include <cstdint>
 #include <functional>
 #include <initializer_list>
+#include <memory>
 #include <optional>
+#include <stdexcept>
 #include <string>
 #include <string_view>
 #include <unordered_map>
@@ -52,6 +54,52 @@ enum class GraphCapacityMode {
 struct TaskSpec {
     VoiceTaskKind task = VoiceTaskKind::Vad;
     RunMode mode = RunMode::Offline;
+};
+
+struct TaskProgress {
+    double fraction = 0.0;
+    std::string stage;
+    int64_t completed = 0;
+    int64_t total = 0;
+};
+
+struct TaskExecutionControl {
+    std::function<bool()> cancellation_requested;
+    std::function<void(const TaskProgress &)> progress;
+};
+
+class TaskCancelled final : public std::runtime_error {
+public:
+    TaskCancelled();
+};
+
+bool task_cancellation_requested(
+    const std::shared_ptr<const TaskExecutionControl> & control) noexcept;
+void throw_if_task_cancelled(
+    const std::shared_ptr<const TaskExecutionControl> & control);
+void report_task_progress(
+    const std::shared_ptr<const TaskExecutionControl> & control,
+    double fraction,
+    std::string_view stage,
+    int64_t completed = 0,
+    int64_t total = 0);
+
+class ScopedTaskExecutionControl {
+public:
+    ScopedTaskExecutionControl(
+        engine::core::ExecutionContext & execution_context,
+        std::shared_ptr<const TaskExecutionControl> control);
+    ~ScopedTaskExecutionControl();
+
+    ScopedTaskExecutionControl(const ScopedTaskExecutionControl &) = delete;
+    ScopedTaskExecutionControl & operator=(const ScopedTaskExecutionControl &) = delete;
+
+    bool backend_cancellation_installed() const noexcept;
+
+private:
+    engine::core::ExecutionContext * execution_context_ = nullptr;
+    std::shared_ptr<const TaskExecutionControl> control_;
+    bool backend_cancellation_installed_ = false;
 };
 
 struct SessionOptions {
@@ -163,6 +211,7 @@ struct TaskRequest {
     std::optional<VoiceCondition> voice = std::nullopt;
     std::vector<VoiceArtifact> input_artifacts;
     std::unordered_map<std::string, std::string> options;
+    std::shared_ptr<const TaskExecutionControl> execution_control;
 };
 
 struct AudioPreparationContract {

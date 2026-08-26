@@ -1,7 +1,9 @@
 #include "engine/framework/runtime/session.h"
+#include "engine/framework/core/execution_context.h"
 #include "engine/framework/text/chunking.h"
 
 #include <algorithm>
+#include <cmath>
 #include <cstddef>
 #include <limits>
 #include <stdexcept>
@@ -14,6 +16,84 @@ int64_t require_smallest_fitting_capacity(
     const std::vector<int64_t> & capacities,
     int64_t request_size);
 
+bool backend_abort_callback(void * data) noexcept {
+    const auto * control = static_cast<const TaskExecutionControl *>(data);
+    if (control == nullptr || !control->cancellation_requested) {
+        return false;
+    }
+    try {
+        return control->cancellation_requested();
+    } catch (...) {
+        return true;
+    }
+}
+
+}
+
+TaskCancelled::TaskCancelled()
+    : std::runtime_error("task cancelled") {}
+
+bool task_cancellation_requested(
+    const std::shared_ptr<const TaskExecutionControl> & control) noexcept {
+    if (control == nullptr || !control->cancellation_requested) {
+        return false;
+    }
+    try {
+        return control->cancellation_requested();
+    } catch (...) {
+        return true;
+    }
+}
+
+void throw_if_task_cancelled(
+    const std::shared_ptr<const TaskExecutionControl> & control) {
+    if (task_cancellation_requested(control)) {
+        throw TaskCancelled();
+    }
+}
+
+void report_task_progress(
+    const std::shared_ptr<const TaskExecutionControl> & control,
+    double fraction,
+    std::string_view stage,
+    int64_t completed,
+    int64_t total) {
+    if (control == nullptr || !control->progress) {
+        return;
+    }
+    if (!std::isfinite(fraction)) {
+        throw std::runtime_error("task progress fraction must be finite");
+    }
+    TaskProgress progress;
+    progress.fraction = std::clamp(fraction, 0.0, 1.0);
+    progress.stage = std::string(stage);
+    progress.completed = completed;
+    progress.total = total;
+    control->progress(progress);
+}
+
+ScopedTaskExecutionControl::ScopedTaskExecutionControl(
+    engine::core::ExecutionContext & execution_context,
+    std::shared_ptr<const TaskExecutionControl> control)
+    : execution_context_(&execution_context),
+      control_(std::move(control)) {
+    if (control_ != nullptr && control_->cancellation_requested) {
+        backend_cancellation_installed_ = engine::core::set_backend_abort_callback(
+            execution_context_->backend(),
+            backend_abort_callback,
+            const_cast<TaskExecutionControl *>(control_.get()));
+    }
+}
+
+ScopedTaskExecutionControl::~ScopedTaskExecutionControl() {
+    if (backend_cancellation_installed_ && execution_context_ != nullptr) {
+        (void) engine::core::set_backend_abort_callback(
+            execution_context_->backend(), nullptr, nullptr);
+    }
+}
+
+bool ScopedTaskExecutionControl::backend_cancellation_installed() const noexcept {
+    return backend_cancellation_installed_;
 }
 
 MappedGraphCapacityAdapter::MappedGraphCapacityAdapter(

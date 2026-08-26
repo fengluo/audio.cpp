@@ -41,6 +41,10 @@ struct BackendMemorySnapshot {
 
 ggml_backend_t init_backend(const BackendConfig & config);
 void set_backend_threads(ggml_backend_t backend, int threads);
+bool set_backend_abort_callback(
+    ggml_backend_t backend,
+    ggml_abort_callback callback,
+    void * callback_data);
 BackendType backend_type(ggml_backend_t backend);
 bool is_host_backend(ggml_backend_t backend);
 bool uses_host_graph_plan(BackendType type);

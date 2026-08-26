@@ -59,9 +59,13 @@ private:
     };
 
     Qwen3ASRRequest make_request(const runtime::TaskRequest & request) const;
+    runtime::TaskResult run_impl(const runtime::TaskRequest & request);
     std::vector<AudioChunkPlan> audio_chunk_plan(const runtime::TaskRequest & request);
     runtime::IOfflineVoiceTaskSession & vad_session();
-    runtime::TaskResult run_single(const Qwen3ASRRequest & request);
+    runtime::TaskResult run_single(
+        const Qwen3ASRRequest & request,
+        double progress_start = 0.0,
+        double progress_end = 1.0);
     runtime::StreamEvent process_available_stream_chunks(bool final);
     runtime::StreamEvent process_one_stream_chunk(const runtime::AudioBuffer & audio);
 

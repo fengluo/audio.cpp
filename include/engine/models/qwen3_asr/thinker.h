@@ -26,7 +26,10 @@ public:
     Qwen3ASRGeneratedTokens generate(
         const Qwen3ASRPrompt & prompt,
         const Qwen3ASRAudioEmbeddings & audio_embeddings,
-        const Qwen3ASRGenerationOptions & options);
+        const Qwen3ASRGenerationOptions & options,
+        const std::shared_ptr<const runtime::TaskExecutionControl> & execution_control,
+        double progress_start,
+        double progress_end);
 
     std::vector<int32_t> classify_prompt(
         const Qwen3ASRPrompt & prompt,

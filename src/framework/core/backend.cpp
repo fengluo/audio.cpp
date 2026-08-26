@@ -269,6 +269,30 @@ void set_backend_threads(ggml_backend_t backend, int threads) {
     }
 }
 
+bool set_backend_abort_callback(
+    ggml_backend_t backend,
+    ggml_abort_callback callback,
+    void * callback_data) {
+    if (backend == nullptr) {
+        return false;
+    }
+    ggml_backend_dev_t device = ggml_backend_get_device(backend);
+    if (device == nullptr) {
+        return false;
+    }
+    ggml_backend_reg_t reg = ggml_backend_dev_backend_reg(device);
+    if (reg == nullptr) {
+        return false;
+    }
+    auto setter = reinterpret_cast<ggml_backend_set_abort_callback_t>(
+        ggml_backend_reg_get_proc_address(reg, "ggml_backend_set_abort_callback"));
+    if (setter == nullptr) {
+        return false;
+    }
+    setter(backend, callback, callback_data);
+    return true;
+}
+
 bool is_host_backend(ggml_backend_t backend) {
     if (backend == nullptr) {
         return false;
