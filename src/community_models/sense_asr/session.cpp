@@ -17,6 +17,7 @@
 #include <limits>
 #include <stdexcept>
 #include <string>
+#include <string_view>
 #include <utility>
 #include <vector>
 
@@ -323,6 +324,29 @@ void SenseAsrSession::prepare(
 }
 
 runtime::TaskResult SenseAsrSession::run(const runtime::TaskRequest &request) {
+  runtime::ScopedTaskExecutionControl execution_control(
+      execution_context(), request.execution_control);
+  runtime::throw_if_task_cancelled(request.execution_control);
+  runtime::report_task_progress(request.execution_control, 0.0,
+                                "sense_asr.starting");
+  try {
+    auto result = run_impl(request);
+    runtime::throw_if_task_cancelled(request.execution_control);
+    runtime::report_task_progress(request.execution_control, 1.0,
+                                  "sense_asr.complete");
+    return result;
+  } catch (const runtime::TaskCancelled &) {
+    throw;
+  } catch (...) {
+    if (runtime::task_cancellation_requested(request.execution_control)) {
+      throw runtime::TaskCancelled();
+    }
+    throw;
+  }
+}
+
+runtime::TaskResult
+SenseAsrSession::run_impl(const runtime::TaskRequest &request) {
   require_prepared("SenseVoice run()");
   if (task_.mode != runtime::RunMode::Offline) {
     throw std::runtime_error("SenseVoice run() requires an offline session");
@@ -332,23 +356,29 @@ runtime::TaskResult SenseAsrSession::run(const runtime::TaskRequest &request) {
       normalize_request_options(request.options, *contract_);
   const auto chunks = audio_chunk_plan(normalized_request);
   if (chunks.empty()) {
-    return run_single(make_request(normalized_request));
+    return run_single(make_request(normalized_request), 0.0, 1.0);
   }
   const auto &audio = *normalized_request.audio_input;
   if (chunks.size() == 1) {
     auto item = normalized_request;
     item.audio_input =
         engine::audio::slice_audio_buffer(audio, chunks.front().source_span);
-    return run_single(make_request(item));
+    return run_single(make_request(item), 0.0, 1.0);
   }
 
   runtime::TaskResult merged;
   std::string text;
-  for (const auto &chunk : chunks) {
+  for (size_t index = 0; index < chunks.size(); ++index) {
+    const auto &chunk = chunks[index];
     auto item = normalized_request;
     item.audio_input =
         engine::audio::slice_audio_buffer(audio, chunk.source_span);
-    const auto result = run_single(make_request(item));
+    const double progress_start =
+        static_cast<double>(index) / static_cast<double>(chunks.size());
+    const double progress_end =
+        static_cast<double>(index + 1) / static_cast<double>(chunks.size());
+    const auto result =
+        run_single(make_request(item), progress_start, progress_end);
     if (result.text_output.has_value()) {
       append_chunk_text(text, result.text_output->text);
       if (!merged.text_output.has_value()) {
@@ -501,6 +531,7 @@ SenseAsrSession::make_request(const runtime::TaskRequest &request) const {
     out.transcription.keep_tags =
         runtime::parse_bool_option(*value, "keep_tags");
   }
+  out.execution_control = request.execution_control;
   return out;
 }
 
@@ -603,10 +634,22 @@ runtime::IOfflineVoiceTaskSession &SenseAsrSession::vad_session() {
   return *vad_session_;
 }
 
-runtime::TaskResult SenseAsrSession::run_single(const AsrRequest &request) {
+runtime::TaskResult SenseAsrSession::run_single(const AsrRequest &request,
+                                                double progress_start,
+                                                double progress_end) {
   const auto wall_start = Clock::now();
+  const auto report_progress = [&](double local_fraction,
+                                   std::string_view stage) {
+    runtime::report_task_progress(
+        request.execution_control,
+        progress_start + (progress_end - progress_start) * local_fraction,
+        stage);
+    runtime::throw_if_task_cancelled(request.execution_control);
+  };
+  runtime::throw_if_task_cancelled(request.execution_control);
 
   const auto resample_start = Clock::now();
+  report_progress(0.02, "sense_asr.frontend");
   const auto mono =
       engine::audio::convert_interleaved_audio_to_mono_linear_resampled(
           request.audio.samples, request.audio.sample_rate,
@@ -616,19 +659,24 @@ runtime::TaskResult SenseAsrSession::run_single(const AsrRequest &request) {
   const auto frontend_start = Clock::now();
   const auto features =
       frontend_.extract(mono, assets_->config.frontend.sample_rate);
+  report_progress(0.20, "sense_asr.frontend");
   const auto frontend_end = Clock::now();
 
   const auto encoder_start = Clock::now();
   encoder_.set_query_tokens(query_tokens(request.transcription,
                                          assets_->config.encoder.query_tokens));
+  report_progress(0.25, "sense_asr.encoder");
   const auto encoded = encoder_.encode(features);
+  report_progress(0.90, "sense_asr.encoder");
   const auto encoder_end = Clock::now();
 
   const auto decode_start = Clock::now();
+  report_progress(0.94, "sense_asr.decode");
   const auto decoded =
       decode_ctc(encoded.logits, encoded.frames, encoded.vocab_size,
                  assets_->config.encoder.blank_id, assets_->config.vocab,
                  request.transcription.keep_tags);
+  report_progress(0.98, "sense_asr.decode");
   const auto decode_end = Clock::now();
 
   runtime::TaskResult result;
@@ -737,8 +785,12 @@ runtime::StreamEvent
 SenseAsrSession::process_one_stream_chunk(const runtime::AudioBuffer &audio) {
   runtime::TaskRequest item_request = streaming_request_;
   item_request.audio_input = audio;
+  // Buffered streaming needs stream-scoped progress/cancellation semantics.
+  // Preserve its existing behavior until that contract is specified and
+  // tested independently from offline execution control.
+  item_request.execution_control.reset();
   item_request.options["audio_chunk_mode"] = "none";
-  auto item = run_single(make_request(item_request));
+  auto item = run_single(make_request(item_request), 0.0, 1.0);
 
   runtime::StreamEvent event;
   event.is_final = false;

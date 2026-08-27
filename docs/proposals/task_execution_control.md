@@ -109,6 +109,21 @@ chunk's local progress into a non-overlapping global range.
 Streaming Qwen3-ASR and other model families are not covered by this first
 integration. They require separate scope/lifetime decisions and tests.
 
+## SenseVoice Offline Integration
+
+The local follow-up candidate applies the same contract to SenseVoice offline
+inference without changing its buffered-streaming behavior. One backend scope
+owns the complete offline `run()` call. The session checks cancellation before
+work, between frontend/encoder/decode stages, and before publishing a result;
+multi-chunk requests map each chunk into a non-overlapping fraction range.
+
+The stage vocabulary is `sense_asr.starting`, `sense_asr.frontend`,
+`sense_asr.encoder`, `sense_asr.decode`, and `sense_asr.complete`. A backend
+graph failure is translated to `TaskCancelled` only while cancellation is
+actually requested. Buffered streaming deliberately does not reuse this
+per-offline-request progress contract: its start/push/finalize lifetime remains
+a separate review item.
+
 ## Failure Mapping
 
 Model integrations should preserve ordinary provider errors. If a backend graph
@@ -129,6 +144,7 @@ should be presented as three independently reviewable changes:
    backend reuse test;
 3. Qwen3-ASR offline observation points, progress mapping, and model regression
    evidence.
+4. SenseVoice offline scope/observation points and model regression evidence.
 
 This split keeps the generic runtime contract independent from one model and
 makes the ggml Metal behavior change explicit to backend reviewers.
@@ -150,6 +166,14 @@ The Qwen3-ASR integration evidence additionally verifies deterministic output,
 in-flight cancellation, progress monotonicity, repeated session reuse, repeated
 model/session load-run-unload, and serialized same-session calls in the embedding
 framework.
+
+The SenseVoice follow-up ran the same lifecycle and execution-control contract
+against the pinned Q8 GGUF on macOS arm64 CPU and Metal. Both configurations
+completed two load/run/unload cycles, returned monotonic progress, cancelled at
+the encoder stage without publishing a result, reused the session afterward,
+and serialized two simultaneous calls. The CPU successful/cancelled calls were
+210.337/12.3186 ms; Metal measured 41.2061/11.2726 ms. These values are local
+behavior observations, not performance gates.
 
 ## Open Review Questions
 

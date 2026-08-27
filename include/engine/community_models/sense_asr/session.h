@@ -60,13 +60,17 @@ private:
   struct AsrRequest {
     runtime::AudioBuffer audio;
     SenseAsrTranscriptionOptions transcription;
+    std::shared_ptr<const runtime::TaskExecutionControl> execution_control;
   };
 
   AsrRequest make_request(const runtime::TaskRequest &request) const;
+  runtime::TaskResult run_impl(const runtime::TaskRequest &request);
   std::vector<AudioChunkPlan>
   audio_chunk_plan(const runtime::TaskRequest &request);
   runtime::IOfflineVoiceTaskSession &vad_session();
-  runtime::TaskResult run_single(const AsrRequest &request);
+  runtime::TaskResult run_single(const AsrRequest &request,
+                                 double progress_start,
+                                 double progress_end);
   runtime::StreamEvent process_available_stream_chunks(bool final);
   runtime::StreamEvent
   process_one_stream_chunk(const runtime::AudioBuffer &audio);
