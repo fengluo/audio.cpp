@@ -519,6 +519,15 @@ add_library(engine_model_marblenet_vad OBJECT
 set_target_properties(engine_model_marblenet_vad PROPERTIES EXCLUDE_FROM_ALL TRUE)
 audiocpp_configure_runtime_object(engine_model_marblenet_vad)
 
+audiocpp_add_model(fsmn_vad
+    SOURCES
+        src/models/fsmn_vad/session.cpp
+    INCLUDES
+        engine/models/fsmn_vad/session.h
+    LOADERS
+        engine::models::fsmn_vad::make_fsmn_vad_loader
+)
+
 audiocpp_add_model(roformer
     SOURCES
         src/models/roformer/assets.cpp

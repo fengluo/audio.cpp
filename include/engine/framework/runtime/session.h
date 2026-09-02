@@ -135,6 +135,9 @@ struct AudioChunk {
     int channels = 1;
     int64_t start_sample = 0;
     std::vector<float> samples;
+    // True when this is the final input chunk. Stateful frontends may use this
+    // to flush bounded right context without padding the caller's source span.
+    bool is_final = false;
 };
 
 struct Transcript {
