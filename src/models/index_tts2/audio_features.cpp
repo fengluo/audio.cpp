@@ -1,5 +1,6 @@
 #include "engine/models/index_tts2/audio_features.h"
 
+#include "engine/framework/audio/campplus_fbank.h"
 #include "engine/framework/audio/conversion.h"
 #include "engine/framework/audio/dsp.h"
 #include "engine/framework/audio/resampling.h"
@@ -300,96 +301,11 @@ IndexTTS2MelOutput compute_index_tts2_mel_spectrogram(
 }
 
 IndexTTS2FbankOutput compute_index_tts2_campplus_fbank_16k(const std::vector<float> & waveform_16k) {
-    constexpr int64_t kSampleRate = 16000;
-    constexpr int64_t kWindowSize = 400;
-    constexpr int64_t kWindowShift = 160;
-    constexpr int64_t kPaddedWindowSize = 512;
-    constexpr int64_t kNumMels = 80;
-    constexpr float kLowFreq = 20.0F;
-    constexpr float kHighFreq = 0.0F;
-    constexpr float kPreemphasis = 0.97F;
-    constexpr float kEpsilon = std::numeric_limits<float>::epsilon();
-
-    if (static_cast<int64_t>(waveform_16k.size()) < kWindowSize) {
-        throw std::runtime_error("IndexTTS2 CAMPPlus fbank requires at least one 25 ms frame");
-    }
-
-    const int64_t frames = 1 + (static_cast<int64_t>(waveform_16k.size()) - kWindowSize) / kWindowShift;
-    const auto & window = cached_povey_window(kWindowSize);
-    const auto & mel_filterbank = cached_kaldi_mel_filterbank(
-        kSampleRate,
-        kPaddedWindowSize,
-        kNumMels,
-        kLowFreq,
-        kHighFreq);
-
-    std::vector<float> frame(static_cast<size_t>(kWindowSize), 0.0F);
-    std::vector<float> stft_batch(static_cast<size_t>(frames * kPaddedWindowSize), 0.0F);
-    for (int64_t frame_index = 0; frame_index < frames; ++frame_index) {
-        const int64_t start = frame_index * kWindowShift;
-        float mean = 0.0F;
-        for (int64_t i = 0; i < kWindowSize; ++i) {
-            const float sample = waveform_16k[static_cast<size_t>(start + i)];
-            frame[static_cast<size_t>(i)] = sample;
-            mean += sample;
-        }
-        mean /= static_cast<float>(kWindowSize);
-        for (int64_t i = 0; i < kWindowSize; ++i) {
-            frame[static_cast<size_t>(i)] -= mean;
-        }
-        for (int64_t i = kWindowSize - 1; i > 0; --i) {
-            frame[static_cast<size_t>(i)] -= kPreemphasis * frame[static_cast<size_t>(i - 1)];
-        }
-        frame[0] -= kPreemphasis * frame[0];
-        for (int64_t i = 0; i < kWindowSize; ++i) {
-            stft_batch[static_cast<size_t>(frame_index * kPaddedWindowSize + i)] =
-                frame[static_cast<size_t>(i)] * window[static_cast<size_t>(i)];
-        }
-    }
-
-    std::vector<float> stft_window(static_cast<size_t>(kPaddedWindowSize), 1.0F);
-    const engine::audio::STFTConfig stft_config{
-        kPaddedWindowSize,
-        kPaddedWindowSize,
-        kPaddedWindowSize,
-        false,
-        engine::audio::STFTPadMode::Constant,
-        engine::audio::STFTFamily::Default,
-    };
-    const auto magnitude = engine::audio::STFT().compute_magnitude(
-        stft_batch,
-        stft_window,
-        frames,
-        kPaddedWindowSize,
-        stft_config);
-
-    const int64_t freq_bins = (kPaddedWindowSize / 2) + 1;
+    auto features = engine::audio::extract_campplus_fbank_16k(waveform_16k);
     IndexTTS2FbankOutput output;
-    output.frames = frames;
-    output.dims = kNumMels;
-    output.values.assign(static_cast<size_t>(frames * kNumMels), 0.0F);
-    for (int64_t frame_index = 0; frame_index < frames; ++frame_index) {
-        for (int64_t mel_bin = 0; mel_bin < kNumMels; ++mel_bin) {
-            float energy = 0.0F;
-            for (int64_t freq = 0; freq < freq_bins; ++freq) {
-                const float mag = magnitude.values[static_cast<size_t>(frame_index * freq_bins + freq)];
-                energy += (mag * mag) * mel_filterbank[static_cast<size_t>(mel_bin * freq_bins + freq)];
-            }
-            output.values[static_cast<size_t>(frame_index * kNumMels + mel_bin)] =
-                std::log(std::max(energy, kEpsilon));
-        }
-    }
-
-    for (int64_t mel_bin = 0; mel_bin < kNumMels; ++mel_bin) {
-        float mean = 0.0F;
-        for (int64_t frame_index = 0; frame_index < frames; ++frame_index) {
-            mean += output.values[static_cast<size_t>(frame_index * kNumMels + mel_bin)];
-        }
-        mean /= static_cast<float>(frames);
-        for (int64_t frame_index = 0; frame_index < frames; ++frame_index) {
-            output.values[static_cast<size_t>(frame_index * kNumMels + mel_bin)] -= mean;
-        }
-    }
+    output.values = std::move(features.values);
+    output.frames = features.frames;
+    output.dims = features.dims;
     return output;
 }
 

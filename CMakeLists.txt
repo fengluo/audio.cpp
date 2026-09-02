@@ -474,6 +474,7 @@ add_library(engine_core OBJECT
     src/framework/audio/kaldi_fbank.cpp
     src/framework/audio/activity.cpp
     src/framework/audio/chunking.cpp
+    src/framework/audio/campplus_fbank.cpp
     src/framework/audio/conversion.cpp
     src/framework/audio/deepfilternet2.cpp
     src/framework/audio/dsp.cpp
@@ -526,6 +527,15 @@ audiocpp_add_model(fsmn_vad
         engine/models/fsmn_vad/session.h
     LOADERS
         engine::models::fsmn_vad::make_fsmn_vad_loader
+)
+
+audiocpp_add_model(campplus_sv
+    SOURCES
+        src/models/campplus_sv/session.cpp
+    INCLUDES
+        engine/models/campplus_sv/session.h
+    LOADERS
+        engine::models::campplus_sv::make_campplus_sv_loader
 )
 
 audiocpp_add_model(roformer
@@ -1905,6 +1915,7 @@ if (ENGINE_BUILD_WARMBENCH)
     endfunction()
 
     add_engine_warmbench(campplus_shared_default_probe tests/glm_tts/campplus_shared_default_probe.cpp)
+    add_engine_warmbench(campplus_sv_probe tests/campplus_sv/campplus_sv_probe.cpp)
     add_engine_warmbench(chatterbox_warm_bench tests/chatterbox/chatterbox_warm_bench.cpp)
     add_engine_warmbench(citrinet_asr_warm_bench tests/citrinet_asr/citrinet_asr_warm_bench.cpp)
     add_engine_warmbench(confucius4_tts_warm_bench tests/confucius4_tts/confucius4_tts_warm_bench.cpp)

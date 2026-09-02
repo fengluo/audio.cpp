@@ -254,6 +254,12 @@ struct VoiceActivityEvent {
     std::optional<SpeechSegment> segment = std::nullopt;
 };
 
+struct SpeakerEmbeddingOutput {
+    std::vector<float> values;
+    int64_t feature_frame_count = 0;
+    bool l2_normalized = false;
+};
+
 struct TaskResult {
     std::optional<AudioBuffer> audio_output = std::nullopt;
     std::vector<NamedAudioBuffer> named_audio_outputs;
@@ -261,6 +267,7 @@ struct TaskResult {
     std::vector<SpeechSegment> speech_segments;
     std::vector<SpeakerTurn> speaker_turns;
     std::vector<WordTimestamp> word_timestamps;
+    std::optional<SpeakerEmbeddingOutput> speaker_embedding = std::nullopt;
     std::optional<VoiceArtifact> artifact_output = std::nullopt;
     std::vector<VoiceArtifact> output_artifacts;
 };
