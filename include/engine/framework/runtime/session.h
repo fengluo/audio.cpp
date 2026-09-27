@@ -260,6 +260,12 @@ struct SpeakerEmbeddingOutput {
     bool l2_normalized = false;
 };
 
+struct VadFrameScoresOutput {
+    std::vector<float> speech_probabilities;
+    int sample_rate = 0;
+    int64_t frame_shift_samples = 0;
+};
+
 struct TaskResult {
     std::optional<AudioBuffer> audio_output = std::nullopt;
     std::vector<NamedAudioBuffer> named_audio_outputs;
@@ -268,6 +274,7 @@ struct TaskResult {
     std::vector<SpeakerTurn> speaker_turns;
     std::vector<WordTimestamp> word_timestamps;
     std::optional<SpeakerEmbeddingOutput> speaker_embedding = std::nullopt;
+    std::optional<VadFrameScoresOutput> vad_frame_scores = std::nullopt;
     std::optional<VoiceArtifact> artifact_output = std::nullopt;
     std::vector<VoiceArtifact> output_artifacts;
 };

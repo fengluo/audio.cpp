@@ -8,7 +8,9 @@
 
 #include "engine/models/fsmn_vad/session.h"
 
+#include "engine/framework/assets/tensor_source.h"
 #include "engine/framework/core/backend.h"
+#include "engine/framework/core/backend_weight_store.h"
 #include "engine/framework/io/filesystem.h"
 #include "engine/framework/runtime/options.h"
 #include "engine/framework/runtime/session_base.h"
@@ -45,6 +47,7 @@ constexpr float kPreemphasis = 0.97f;
 constexpr float kLowFrequency = 20.0f;
 constexpr float kHighFrequency = 8000.0f;
 constexpr float kPi = 3.14159265358979323846f;
+constexpr std::size_t kWeightContextBytes = 4U * 1024U * 1024U;
 
 struct OperationControl {
     std::shared_ptr<const runtime::TaskExecutionControl> execution_control;
@@ -195,12 +198,14 @@ private:
     std::vector<std::vector<float>> filters_;
 };
 
-struct ModelData {
-    explicit ModelData(const std::string &path) {
-        gguf_init_params parameters{false, &context};
+struct ModelAssets {
+    explicit ModelAssets(const std::filesystem::path &path) {
+        ggml_context *metadata_context = nullptr;
+        gguf_init_params parameters{true, &metadata_context};
         gguf_context *gguf = gguf_init_from_file(path.c_str(), parameters);
-        if (gguf == nullptr || context == nullptr) {
+        if (gguf == nullptr || metadata_context == nullptr) {
             if (gguf != nullptr) gguf_free(gguf);
+            if (metadata_context != nullptr) ggml_free(metadata_context);
             throw std::runtime_error("failed to load FSMN-VAD GGUF model");
         }
         auto read_u32 = [&](const char *key, int fallback) {
@@ -216,46 +221,72 @@ struct ModelData {
         output_dim = read_u32("vad.output_dim", 248);
         lfr_m = read_u32("vad.lfr_m", 5);
         lfr_n = read_u32("vad.lfr_n", 1);
-        for (int index = 0; index < gguf_get_n_tensors(gguf); ++index) {
-            const char *name = gguf_get_tensor_name(gguf, index);
-            tensors.emplace(name, ggml_get_tensor(context, name));
-        }
         gguf_free(gguf);
+        ggml_free(metadata_context);
         if (input_dim != 400 || projection_dim != 128 || layer_count != 4 ||
             left_order != 20 || output_dim != 248 || lfr_m != 5 || lfr_n != 1) {
-            ggml_free(context);
-            context = nullptr;
             throw std::runtime_error(
                 "unsupported FSMN-VAD GGUF architecture metadata");
         }
-        try {
-            require("cmvn.shift");
-            require("cmvn.scale");
-            require("encoder.in_linear1.linear.weight");
-            require("encoder.in_linear1.linear.bias");
-            require("encoder.in_linear2.linear.weight");
-            require("encoder.in_linear2.linear.bias");
-            require("encoder.out_linear1.linear.weight");
-            require("encoder.out_linear1.linear.bias");
-            require("encoder.out_linear2.linear.weight");
-            require("encoder.out_linear2.linear.bias");
-            for (int layer = 0; layer < layer_count; ++layer) {
-                const std::string prefix =
-                    "encoder.fsmn." + std::to_string(layer) + ".";
-                require(prefix + "linear.linear.weight");
-                require(prefix + "fsmn_block.conv_left.weight");
-                require(prefix + "affine.linear.weight");
-                require(prefix + "affine.linear.bias");
-            }
-        } catch (...) {
-            ggml_free(context);
-            context = nullptr;
-            throw;
-        }
+        source = engine::assets::open_tensor_source(path);
+        cmvn_shift = source->require_f32("cmvn.shift", {input_dim});
+        cmvn_scale = source->require_f32("cmvn.scale", {input_dim});
     }
 
-    ~ModelData() {
-        if (context != nullptr) ggml_free(context);
+    std::shared_ptr<const engine::assets::TensorSource> source;
+    std::vector<float> cmvn_shift;
+    std::vector<float> cmvn_scale;
+    int input_dim = 0;
+    int projection_dim = 0;
+    int layer_count = 0;
+    int left_order = 0;
+    int output_dim = 0;
+    int lfr_m = 0;
+    int lfr_n = 0;
+};
+
+struct ModelData {
+    ModelData(
+        std::shared_ptr<const ModelAssets> assets,
+        engine::core::ExecutionContext &execution_context)
+        : assets(std::move(assets)),
+          store(std::make_shared<engine::core::BackendWeightStore>(
+              execution_context.backend(),
+              execution_context.backend_type(),
+              "FSMN-VAD weights",
+              kWeightContextBytes)),
+          input_dim(this->assets->input_dim),
+          projection_dim(this->assets->projection_dim),
+          layer_count(this->assets->layer_count),
+          left_order(this->assets->left_order),
+          output_dim(this->assets->output_dim),
+          lfr_m(this->assets->lfr_m),
+          lfr_n(this->assets->lfr_n) {
+        const auto &source = *this->assets->source;
+        auto load = [&](const std::string &name,
+                        std::initializer_list<int64_t> shape) {
+            tensors.emplace(
+                name,
+                store->load_f32_tensor(source, name, shape).tensor);
+        };
+        load("encoder.in_linear1.linear.weight", {140, input_dim});
+        load("encoder.in_linear1.linear.bias", {140});
+        load("encoder.in_linear2.linear.weight", {250, 140});
+        load("encoder.in_linear2.linear.bias", {250});
+        for (int layer = 0; layer < layer_count; ++layer) {
+            const std::string prefix =
+                "encoder.fsmn." + std::to_string(layer) + ".";
+            load(prefix + "linear.linear.weight", {projection_dim, 250});
+            load(prefix + "fsmn_block.conv_left.weight",
+                 {left_order, projection_dim});
+            load(prefix + "affine.linear.weight", {250, projection_dim});
+            load(prefix + "affine.linear.bias", {250});
+        }
+        load("encoder.out_linear1.linear.weight", {140, 250});
+        load("encoder.out_linear1.linear.bias", {140});
+        load("encoder.out_linear2.linear.weight", {output_dim, 140});
+        load("encoder.out_linear2.linear.bias", {output_dim});
+        store->upload();
     }
 
     ggml_tensor *get(const std::string &name) const {
@@ -266,9 +297,8 @@ struct ModelData {
         return found->second;
     }
 
-    void require(const std::string &name) const { (void)get(name); }
-
-    ggml_context *context = nullptr;
+    std::shared_ptr<const ModelAssets> assets;
+    std::shared_ptr<engine::core::BackendWeightStore> store;
     std::map<std::string, ggml_tensor *> tensors;
     int input_dim = 0;
     int projection_dim = 0;
@@ -491,8 +521,8 @@ std::vector<float> offline_features(
                         frame * model.input_dim + (splice + 2) * kMelBins));
         }
     }
-    const float *shift = static_cast<const float *>(model.get("cmvn.shift")->data);
-    const float *scale = static_cast<const float *>(model.get("cmvn.scale")->data);
+    const float *shift = model.assets->cmvn_shift.data();
+    const float *scale = model.assets->cmvn_scale.data();
     for (std::size_t frame = 0; frame < fbank_count; ++frame) {
         for (int dimension = 0; dimension < model.input_dim; ++dimension) {
             auto &value = features[frame * model.input_dim + dimension];
@@ -573,12 +603,17 @@ std::vector<FrameRange> decode_ranges(
 
 class OfflineDetector final {
 public:
+    struct Result {
+        std::vector<FrameRange> ranges;
+        std::vector<float> speech_scores;
+    };
+
     OfflineDetector(
         std::shared_ptr<const ModelData> model,
         ggml_backend_t backend)
         : model_(std::move(model)), backend_(backend) {}
 
-    std::vector<FrameRange> detect_mono_f32(
+    Result detect_mono_f32(
         const float *samples,
         std::size_t frame_count,
         int sample_rate,
@@ -598,7 +633,11 @@ public:
             *model_, features, caches, backend_, control);
         runtime::report_task_progress(
             control.execution_control, 1.0, "fsmn.infer", 1, 1);
-        return decode_ranges(result.speech_scores, frame_count, options);
+        Result output;
+        output.ranges = decode_ranges(
+            result.speech_scores, frame_count, options);
+        output.speech_scores = std::move(result.speech_scores);
+        return output;
     }
 
 private:
@@ -750,10 +789,8 @@ private:
                         (splice + 2) * kMelBins));
             }
         }
-        const float *shift =
-            static_cast<const float *>(model_->get("cmvn.shift")->data);
-        const float *scale =
-            static_cast<const float *>(model_->get("cmvn.scale")->data);
+        const float *shift = model_->assets->cmvn_shift.data();
+        const float *scale = model_->assets->cmvn_scale.data();
         for (std::size_t frame = 0; frame < output; ++frame) {
             for (int dimension = 0; dimension < model_->input_dim; ++dimension) {
                 auto &value = features[frame * model_->input_dim + dimension];
@@ -812,12 +849,23 @@ VadOptions vad_options_from(
     return config;
 }
 
-runtime::SessionOptions cpu_session_options(runtime::SessionOptions options) {
+runtime::SessionOptions fsmn_session_options(runtime::SessionOptions options) {
     if (options.backend.type == engine::core::BackendType::BestAvailable) {
         options.backend.type = engine::core::BackendType::Cpu;
     }
-    if (options.backend.type != engine::core::BackendType::Cpu) {
-        throw std::invalid_argument("FSMN-VAD currently supports CPU only");
+    if (options.backend.type != engine::core::BackendType::Cpu &&
+        options.backend.type != engine::core::BackendType::Metal) {
+        throw std::invalid_argument(
+            "FSMN-VAD explicit validation supports CPU and Metal only");
+    }
+    if (options.backend.type == engine::core::BackendType::Metal) {
+        const auto validation = runtime::find_option(
+            options.options, {"fsmn_metal_validation"});
+        if (!validation.has_value() ||
+            !runtime::parse_bool_option(*validation, "fsmn_metal_validation")) {
+            throw std::invalid_argument(
+                "FSMN-VAD Metal is rejected outside the explicit validation probe");
+        }
     }
     return options;
 }
@@ -845,12 +893,14 @@ public:
     FsmnVadSession(
         runtime::TaskSpec task,
         runtime::SessionOptions options,
-        std::shared_ptr<const ModelData> model)
-        : RuntimeSessionBase(cpu_session_options(options)),
+        std::shared_ptr<const ModelAssets> assets)
+        : RuntimeSessionBase(fsmn_session_options(options)),
           task_(std::move(task)),
           default_config_(vad_options_from(options.options)),
-          offline_(model, execution_context().backend()),
-          incremental_(std::move(model), execution_context().backend()) {
+          model_(std::make_shared<ModelData>(
+              std::move(assets), execution_context())),
+          offline_(model_, execution_context().backend()),
+          incremental_(model_, execution_context().backend()) {
         if (task_.task != runtime::VoiceTaskKind::Vad) {
             throw std::invalid_argument("FSMN-VAD only supports VoiceTaskKind::Vad");
         }
@@ -888,21 +938,33 @@ public:
         const auto config = vad_options_from(request.options, &default_config_);
         runtime::ScopedTaskExecutionControl execution_scope(
             execution_context(), request.execution_control);
-        const auto ranges = offline_.detect_mono_f32(
+        auto detection = offline_.detect_mono_f32(
             audio.samples.data(),
             audio.samples.size(),
             audio.sample_rate,
             config,
             {request.execution_control});
         runtime::TaskResult result;
-        result.speech_segments.reserve(ranges.size());
-        for (const auto & range : ranges) {
+        result.speech_segments.reserve(detection.ranges.size());
+        for (const auto & range : detection.ranges) {
             runtime::SpeechSegment segment;
             segment.span.start_sample = static_cast<std::int64_t>(
                 range.begin_frame);
             segment.span.end_sample = static_cast<std::int64_t>(
                 range.end_frame);
             result.speech_segments.push_back(std::move(segment));
+        }
+        const auto return_frame_scores = runtime::find_option(
+            request.options, {"return_frame_scores"});
+        if (return_frame_scores.has_value() &&
+            runtime::parse_bool_option(
+                *return_frame_scores, "return_frame_scores")) {
+            runtime::VadFrameScoresOutput frame_scores;
+            frame_scores.speech_probabilities =
+                std::move(detection.speech_scores);
+            frame_scores.sample_rate = kSampleRate;
+            frame_scores.frame_shift_samples = kShiftFrames;
+            result.vad_frame_scores = std::move(frame_scores);
         }
         return result;
     }
@@ -997,6 +1059,7 @@ public:
 private:
     runtime::TaskSpec task_;
     VadOptions default_config_;
+    std::shared_ptr<const ModelData> model_;
     OfflineDetector offline_;
     IncrementalDetector incremental_;
     std::shared_ptr<const runtime::TaskExecutionControl> execution_control_;
@@ -1008,8 +1071,8 @@ private:
 
 class LoadedModel final : public runtime::ILoadedVoiceModel {
 public:
-    explicit LoadedModel(std::shared_ptr<const ModelData> model)
-        : model_(std::move(model)) {
+    explicit LoadedModel(std::shared_ptr<const ModelAssets> assets)
+        : assets_(std::move(assets)) {
         metadata_.family = "fsmn_vad";
         metadata_.variant = "16k";
         metadata_.description = "FSMN-VAD loaded from GGUF weights.";
@@ -1032,13 +1095,13 @@ public:
     std::unique_ptr<runtime::IVoiceTaskSession> create_task_session(
         const runtime::TaskSpec & task,
         const runtime::SessionOptions & options) const override {
-        return std::make_unique<FsmnVadSession>(task, options, model_);
+        return std::make_unique<FsmnVadSession>(task, options, assets_);
     }
 
 private:
     runtime::ModelMetadata metadata_;
     runtime::CapabilitySet capabilities_;
-    std::shared_ptr<const ModelData> model_;
+    std::shared_ptr<const ModelAssets> assets_;
 };
 
 class Loader final : public runtime::IVoiceModelLoader {
@@ -1109,7 +1172,7 @@ std::unique_ptr<runtime::ILoadedVoiceModel> load_fsmn_vad_model(
     }
     const auto path = resolve_weight_path(request.model_path);
     return std::make_unique<LoadedModel>(
-        std::make_shared<ModelData>(path.string()));
+        std::make_shared<ModelAssets>(path));
 }
 
 std::shared_ptr<runtime::IVoiceModelLoader> make_fsmn_vad_loader() {

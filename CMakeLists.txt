@@ -1916,6 +1916,7 @@ if (ENGINE_BUILD_WARMBENCH)
 
     add_engine_warmbench(campplus_shared_default_probe tests/glm_tts/campplus_shared_default_probe.cpp)
     add_engine_warmbench(campplus_sv_probe tests/campplus_sv/campplus_sv_probe.cpp)
+    add_engine_warmbench(fsmn_vad_metal_probe tests/fsmn_vad/fsmn_vad_metal_probe.cpp)
     add_engine_warmbench(chatterbox_warm_bench tests/chatterbox/chatterbox_warm_bench.cpp)
     add_engine_warmbench(citrinet_asr_warm_bench tests/citrinet_asr/citrinet_asr_warm_bench.cpp)
     add_engine_warmbench(confucius4_tts_warm_bench tests/confucius4_tts/confucius4_tts_warm_bench.cpp)
