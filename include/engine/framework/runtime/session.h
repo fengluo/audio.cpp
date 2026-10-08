@@ -7,7 +7,9 @@
 #include <cstdint>
 #include <functional>
 #include <initializer_list>
+#include <memory>
 #include <optional>
+#include <stdexcept>
 #include <string>
 #include <string_view>
 #include <unordered_map>
@@ -54,6 +56,63 @@ struct TaskSpec {
     RunMode mode = RunMode::Offline;
 };
 
+struct TaskProgress {
+    // Overall task fraction in [0, 1]. Model integrations are responsible for
+    // reporting fractions monotonically for a single request.
+    double fraction = 0.0;
+    // Stable semantic stage name. The string is owned by this event.
+    std::string stage;
+    // Optional stage-local units. total == 0 means no unit total is available.
+    int64_t completed = 0;
+    int64_t total = 0;
+};
+
+struct TaskExecutionControl {
+    // Called synchronously on the inference thread. Exceptions fail closed and
+    // are treated as cancellation by cancellation helper/backend callbacks.
+    std::function<bool()> cancellation_requested;
+    // Called synchronously on the inference thread. Exceptions propagate to the
+    // task caller. Do not mutate this control while a request is running.
+    std::function<void(const TaskProgress &)> progress;
+};
+
+class TaskCancelled final : public std::runtime_error {
+public:
+    TaskCancelled();
+};
+
+bool task_cancellation_requested(
+    const std::shared_ptr<const TaskExecutionControl> & control) noexcept;
+void throw_if_task_cancelled(
+    const std::shared_ptr<const TaskExecutionControl> & control);
+void report_task_progress(
+    const std::shared_ptr<const TaskExecutionControl> & control,
+    double fraction,
+    std::string_view stage,
+    int64_t completed = 0,
+    int64_t total = 0);
+
+class ScopedTaskExecutionControl {
+public:
+    // Installs the request's cancellation callback on the execution backend for
+    // this scope. Scopes must not overlap or nest on the same ExecutionContext,
+    // and installing/clearing a scope must not race graph execution there.
+    ScopedTaskExecutionControl(
+        engine::core::ExecutionContext & execution_context,
+        std::shared_ptr<const TaskExecutionControl> control);
+    ~ScopedTaskExecutionControl() noexcept;
+
+    ScopedTaskExecutionControl(const ScopedTaskExecutionControl &) = delete;
+    ScopedTaskExecutionControl & operator=(const ScopedTaskExecutionControl &) = delete;
+
+    bool backend_cancellation_installed() const noexcept;
+
+private:
+    engine::core::ExecutionContext * execution_context_ = nullptr;
+    std::shared_ptr<const TaskExecutionControl> control_;
+    bool backend_cancellation_installed_ = false;
+};
+
 struct SessionOptions {
     engine::core::BackendConfig backend = {};
     std::unordered_map<std::string, std::string> options;
@@ -76,6 +135,9 @@ struct AudioChunk {
     int channels = 1;
     int64_t start_sample = 0;
     std::vector<float> samples;
+    // True when this is the final input chunk. Stateful frontends may use this
+    // to flush bounded right context without padding the caller's source span.
+    bool is_final = false;
 };
 
 struct Transcript {
@@ -167,6 +229,7 @@ struct TaskRequest {
     /// reading either cannot silently see the other half-formed. The `*_list`
     /// option types the spec schema already declares are carried here.
     std::unordered_map<std::string, std::vector<std::string>> option_arrays;
+    std::shared_ptr<const TaskExecutionControl> execution_control;
 };
 
 struct AudioPreparationContract {
@@ -198,6 +261,18 @@ struct VoiceActivityEvent {
     std::optional<SpeechSegment> segment = std::nullopt;
 };
 
+struct SpeakerEmbeddingOutput {
+    std::vector<float> values;
+    int64_t feature_frame_count = 0;
+    bool l2_normalized = false;
+};
+
+struct VadFrameScoresOutput {
+    std::vector<float> speech_probabilities;
+    int sample_rate = 0;
+    int64_t frame_shift_samples = 0;
+};
+
 struct TaskResult {
     std::optional<AudioBuffer> audio_output = std::nullopt;
     std::vector<NamedAudioBuffer> named_audio_outputs;
@@ -205,6 +280,8 @@ struct TaskResult {
     std::vector<SpeechSegment> speech_segments;
     std::vector<SpeakerTurn> speaker_turns;
     std::vector<WordTimestamp> word_timestamps;
+    std::optional<SpeakerEmbeddingOutput> speaker_embedding = std::nullopt;
+    std::optional<VadFrameScoresOutput> vad_frame_scores = std::nullopt;
     std::optional<VoiceArtifact> artifact_output = std::nullopt;
     std::vector<VoiceArtifact> output_artifacts;
 };

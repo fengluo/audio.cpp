@@ -2,6 +2,11 @@ cmake_minimum_required(VERSION 3.20)
 
 project(AudioCpp LANGUAGES C CXX)
 
+include(GNUInstallDirs)
+include(CMakePackageConfigHelpers)
+set(AUDIOCPP_PACKAGE_VERSION "0.9.0")
+option(AUDIOCPP_BUILD_APPS "Build CLI, server, converters and performance tools" ON)
+
 set(AUDIOCPP_VERSION "dev" CACHE STRING "audio.cpp version string")
 
 set(CMAKE_C_STANDARD 11)
@@ -96,7 +101,16 @@ option(ENGINE_HIP_STRIX_HALO_OPTIMIZATIONS
     "Enable opt-in HIP optimizations validated only for Strix Halo (gfx1151)"
     OFF)
 option(ENGINE_ENABLE_NATIVE_CPU "Build ggml CPU kernels with native host ISA flags" ${ENGINE_DEFAULT_ENABLE_NATIVE_CPU})
-option(ENGINE_ENABLE_OPENMP "Build host code with OpenMP support" ON)
+set(ENGINE_DEFAULT_ENABLE_OPENMP ON)
+if(DEFINED GGML_OPENMP)
+    set(ENGINE_DEFAULT_ENABLE_OPENMP ${GGML_OPENMP})
+endif()
+option(ENGINE_ENABLE_OPENMP "Build host code with OpenMP support" ${ENGINE_DEFAULT_ENABLE_OPENMP})
+if(DEFINED GGML_OPENMP AND ((ENGINE_ENABLE_OPENMP AND NOT GGML_OPENMP) OR
+                           (NOT ENGINE_ENABLE_OPENMP AND GGML_OPENMP)))
+    message(FATAL_ERROR "ENGINE_ENABLE_OPENMP conflicts with GGML_OPENMP; set only ENGINE_ENABLE_OPENMP or make both values match")
+endif()
+set(GGML_OPENMP ${ENGINE_ENABLE_OPENMP} CACHE BOOL "Build ggml with OpenMP" FORCE)
 option(AUDIOCPP_STATIC_ESPEAK "Build and statically link GPL-3.0-or-later eSpeak-ng; keep data separate" OFF)
 option(AUDIOCPP_BUILD_NATIVE_MODEL_MANAGER
     "Build native model-manager tools and server download/install support"
@@ -105,6 +119,9 @@ include("${CMAKE_CURRENT_SOURCE_DIR}/app/server/server_frontends.cmake")
 option(AUDIOCPP_USE_SYSTEM_OPENSSL
     "Use system OpenSSL for native model management instead of bundled BoringSSL"
     OFF)
+if(AUDIOCPP_BUILD_NATIVE_MODEL_MANAGER AND NOT AUDIOCPP_BUILD_APPS)
+    message(FATAL_ERROR "AUDIOCPP_BUILD_NATIVE_MODEL_MANAGER requires AUDIOCPP_BUILD_APPS=ON")
+endif()
 if (AUDIOCPP_USE_SYSTEM_OPENSSL AND NOT AUDIOCPP_BUILD_NATIVE_MODEL_MANAGER)
     message(FATAL_ERROR
         "AUDIOCPP_USE_SYSTEM_OPENSSL requires AUDIOCPP_BUILD_NATIVE_MODEL_MANAGER=ON")
@@ -315,7 +332,7 @@ if (AUDIOCPP_CCACHE_PROGRAM AND
 endif()
 
 if (ENGINE_ENABLE_OPENMP)
-    find_package(OpenMP REQUIRED COMPONENTS CXX)
+    find_package(OpenMP REQUIRED COMPONENTS C CXX)
 endif()
 
 if (AUDIOCPP_BUILD_C_API)
@@ -549,6 +566,7 @@ add_library(engine_core OBJECT
     src/framework/tokenizers/sentencepiece.cpp
     src/framework/audio/fft.cpp
     src/framework/audio/kaldi_fbank.cpp
+    src/framework/audio/campplus_fbank.cpp
     src/framework/audio/activity.cpp
     src/framework/audio/activity_graph.cpp
     src/framework/audio/chunking.cpp
@@ -680,6 +698,17 @@ audiocpp_add_model(pulsevad
         engine/models/pulsevad/session.h
     LOADERS
         engine::models::pulsevad::make_pulsevad_loader
+)
+
+audiocpp_add_model(fsmn_vad
+    SOURCES src/models/fsmn_vad/session.cpp
+    INCLUDES engine/models/fsmn_vad/session.h
+    LOADERS engine::models::fsmn_vad::make_fsmn_vad_loader
+)
+audiocpp_add_model(campplus_sv
+    SOURCES src/models/campplus_sv/session.cpp
+    INCLUDES engine/models/campplus_sv/session.h
+    LOADERS engine::models::campplus_sv::make_campplus_sv_loader
 )
 
 audiocpp_add_model(roformer
@@ -2292,7 +2321,8 @@ add_library(cjson_vendor STATIC
 target_compile_definitions(cjson_vendor PUBLIC CJSON_HIDE_SYMBOLS)
 
 target_include_directories(cjson_vendor PUBLIC
-    ${CMAKE_CURRENT_SOURCE_DIR}/external/cJSON
+    $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/external/cJSON>
+    $<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}/audiocpp/vendor/cjson>
 )
 
 # Native package management is deliberately opt-in. Normal CLI and server
@@ -2327,13 +2357,16 @@ add_library(yaml_vendor STATIC
 )
 
 target_include_directories(yaml_vendor PUBLIC
-    ${CMAKE_CURRENT_SOURCE_DIR}/external/libyaml/include
+    $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/external/libyaml/include>
+    $<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}/audiocpp/vendor/libyaml>
 )
 
 target_compile_definitions(yaml_vendor PUBLIC ${AUDIOCPP_LIBYAML_COMPILE_DEFINITIONS})
 
+target_compile_features(engine_runtime PUBLIC cxx_std_17)
 target_include_directories(engine_runtime PUBLIC
-    ${CMAKE_CURRENT_SOURCE_DIR}/include
+    $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
+    $<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}>
 )
 target_include_directories(engine_runtime PRIVATE "${CMAKE_CURRENT_BINARY_DIR}/generated")
 
@@ -2403,6 +2436,75 @@ if (ENGINE_ENABLE_CUDA AND NOT ENGINE_ENABLE_HIP)
     target_link_libraries(engine_runtime PRIVATE CUDA::cudart CUDA::cufft)
 endif()
 
+# Keep the CMake package surface intentionally narrow: consumers link only
+# AudioCpp::engine_runtime, while the export set carries its configured static
+# closure. The list covers optional ggml backends without making a disabled
+# backend part of an installed package.
+set(AUDIOCPP_GGML_EXPORT_TARGETS ggml ggml-base)
+foreach(AUDIOCPP_GGML_TARGET IN ITEMS
+    ggml-cpu
+    ggml-blas
+    ggml-cann
+    ggml-cuda
+    ggml-hip
+    ggml-metal
+    ggml-musa
+    ggml-opencl
+    ggml-openvino
+    ggml-rpc
+    ggml-sycl
+    ggml-virtgpu
+    ggml-vulkan
+    ggml-webgpu
+    ggml-zdnn
+    ggml-zendnn
+)
+    if (TARGET ${AUDIOCPP_GGML_TARGET})
+        list(APPEND AUDIOCPP_GGML_EXPORT_TARGETS ${AUDIOCPP_GGML_TARGET})
+    endif()
+endforeach()
+
+install(TARGETS
+    engine_runtime
+    cjson_vendor
+    yaml_vendor
+    sentencepiece-static
+    ${AUDIOCPP_GGML_EXPORT_TARGETS}
+    EXPORT AudioCppTargets
+    ARCHIVE DESTINATION ${CMAKE_INSTALL_LIBDIR}
+    LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR}
+    RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}
+)
+install(DIRECTORY include/ DESTINATION ${CMAKE_INSTALL_INCLUDEDIR})
+install(FILES external/cJSON/cJSON.h
+    DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/audiocpp/vendor/cjson)
+install(FILES external/libyaml/include/yaml.h
+    DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/audiocpp/vendor/libyaml)
+
+set(AUDIOCPP_PACKAGE_OPENMP ${ENGINE_ENABLE_OPENMP})
+configure_package_config_file(
+    ${CMAKE_CURRENT_SOURCE_DIR}/cmake/AudioCppConfig.cmake.in
+    ${CMAKE_CURRENT_BINARY_DIR}/AudioCppConfig.cmake
+    INSTALL_DESTINATION ${CMAKE_INSTALL_LIBDIR}/cmake/AudioCpp
+)
+write_basic_package_version_file(
+    ${CMAKE_CURRENT_BINARY_DIR}/AudioCppConfigVersion.cmake
+    VERSION ${AUDIOCPP_PACKAGE_VERSION}
+    COMPATIBILITY SameMajorVersion
+)
+install(EXPORT AudioCppTargets
+    FILE AudioCppTargets.cmake
+    NAMESPACE AudioCpp::
+    DESTINATION ${CMAKE_INSTALL_LIBDIR}/cmake/AudioCpp
+)
+install(FILES
+    ${CMAKE_CURRENT_BINARY_DIR}/AudioCppConfig.cmake
+    ${CMAKE_CURRENT_BINARY_DIR}/AudioCppConfigVersion.cmake
+    DESTINATION ${CMAKE_INSTALL_LIBDIR}/cmake/AudioCpp
+)
+
+
+if(AUDIOCPP_BUILD_APPS)
 add_executable(audiocpp_cli
     app/common/build_info.cpp
     app/cli/main.cpp
@@ -2432,6 +2534,8 @@ if (MINGW)
 endif()
 if (ENGINE_ENABLE_OPENMP)
     target_link_libraries(audiocpp_cli PRIVATE OpenMP::OpenMP_CXX)
+endif()
+
 endif()
 
 # ---------------------------------------------------------------------------
@@ -2580,6 +2684,7 @@ if (AUDIOCPP_BUILD_C_API)
     endif()
 endif()
 
+if(AUDIOCPP_BUILD_APPS)
 set(AUDIOCPP_UI_DIST "${CMAKE_CURRENT_SOURCE_DIR}/webui/native/dist/index.html")
 set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS "${AUDIOCPP_UI_DIST}")
 if (EXISTS "${AUDIOCPP_UI_DIST}")
@@ -2685,6 +2790,8 @@ if (ENGINE_ENABLE_OPENMP)
     target_link_libraries(model_perf PRIVATE OpenMP::OpenMP_CXX)
 endif()
 
+endif()
+
 if (ENGINE_BUILD_TESTS OR ENGINE_BUILD_EXTENDED_TESTS OR ENGINE_BUILD_MODEL_TESTS)
     add_executable(yue2_vae_parity_probe
         tests/yue2/yue2_vae_parity_probe.cpp
@@ -2727,6 +2834,8 @@ if (ENGINE_BUILD_WARMBENCH)
         endif()
     endfunction()
 
+    add_engine_warmbench(campplus_sv_probe tests/campplus_sv/campplus_sv_probe.cpp)
+    add_engine_warmbench(fsmn_vad_metal_probe tests/fsmn_vad/fsmn_vad_metal_probe.cpp)
     add_engine_warmbench(campplus_shared_default_probe tests/glm_tts/campplus_shared_default_probe.cpp)
     add_engine_warmbench(chatterbox_warm_bench tests/chatterbox/chatterbox_warm_bench.cpp)
     if(kokoro_tts IN_LIST AUDIOCPP_LINKED_MODELS)
@@ -2985,6 +3094,14 @@ if (ENGINE_BUILD_TESTS OR ENGINE_BUILD_EXTENDED_TESTS OR ENGINE_BUILD_MODEL_TEST
         add_engine_unittest(torch_random_test tests/unittests/test_torch_random.cpp)
         add_test(NAME torch_random_test COMMAND torch_random_test)
 
+        add_engine_unittest(task_execution_control_test tests/unittests/test_task_execution_control.cpp)
+        target_include_directories(task_execution_control_test PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/tests/unittests)
+        add_test(NAME task_execution_control_test COMMAND task_execution_control_test)
+        set_tests_properties(task_execution_control_test PROPERTIES TIMEOUT 60)
+        add_test(NAME audiocpp_install_package COMMAND ${CMAKE_COMMAND}
+            -DAUDIOCPP_SOURCE_DIR=${CMAKE_CURRENT_SOURCE_DIR}
+            -DAUDIOCPP_BINARY_DIR=${CMAKE_CURRENT_BINARY_DIR}
+            -P ${CMAKE_CURRENT_SOURCE_DIR}/cmake/ValidateInstallPackage.cmake)
         add_engine_unittest(backend_device_resolution_test tests/unittests/test_backend_device_resolution.cpp)
         target_include_directories(backend_device_resolution_test PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/tests/unittests)
         add_test(NAME backend_device_resolution_test COMMAND backend_device_resolution_test)
@@ -3100,6 +3217,7 @@ if (ENGINE_BUILD_TESTS OR ENGINE_BUILD_EXTENDED_TESTS OR ENGINE_BUILD_MODEL_TEST
         )
         add_test(NAME audio_utility_api_test COMMAND audio_utility_api_test)
 
+        if(AUDIOCPP_BUILD_APPS)
         add_executable(streaming_audio_input_test
             tests/unittests/test_streaming_audio_input.cpp
             app/streaming/pcm_source.cpp
@@ -3123,6 +3241,7 @@ if (ENGINE_BUILD_TESTS OR ENGINE_BUILD_EXTENDED_TESTS OR ENGINE_BUILD_MODEL_TEST
         # block forever rather than fail. Bound it so CI reports a failure instead.
         set_tests_properties(http_live_body_test PROPERTIES TIMEOUT 120)
 
+        endif()
         add_engine_unittest(conv_transpose_fast_path_test tests/unittests/test_conv_transpose_fast_path.cpp)
         add_test(NAME conv_transpose_fast_path_test COMMAND conv_transpose_fast_path_test)
 
@@ -3144,6 +3263,7 @@ if (ENGINE_BUILD_TESTS OR ENGINE_BUILD_EXTENDED_TESTS OR ENGINE_BUILD_MODEL_TEST
         add_engine_unittest(scaled_dot_product_attention_test tests/unittests/test_scaled_dot_product_attention.cpp)
         add_test(NAME scaled_dot_product_attention_test COMMAND scaled_dot_product_attention_test)
 
+        if(AUDIOCPP_BUILD_APPS)
         add_executable(cli_request_options_test
             tests/unittests/test_cli_request_options.cpp
             app/cli/args.cpp
@@ -3222,6 +3342,7 @@ if (ENGINE_BUILD_TESTS OR ENGINE_BUILD_EXTENDED_TESTS OR ENGINE_BUILD_MODEL_TEST
         endif()
     endif()
 
+        endif()
     if (ENGINE_BUILD_MODEL_TESTS)
         if (sanotts IN_LIST AUDIOCPP_LINKED_MODELS AND inflect_v2 IN_LIST AUDIOCPP_LINKED_MODELS)
             add_engine_unittest(espeak_frontend_probe tests/unittests/espeak_frontend_probe.cpp)
@@ -3762,7 +3883,7 @@ if (ENGINE_BUILD_TESTS OR ENGINE_BUILD_EXTENDED_TESTS OR ENGINE_BUILD_MODEL_TEST
                 )
             endif()
         endif()
-        if (AUDIOCPP_FUN_ASR_NANO_TEST_GGUF)
+        if (AUDIOCPP_BUILD_APPS AND AUDIOCPP_FUN_ASR_NANO_TEST_GGUF)
             add_test(
                 NAME fun_asr_nano_gguf_cli_cpu
                 COMMAND audiocpp_cli

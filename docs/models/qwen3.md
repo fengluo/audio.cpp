@@ -322,3 +322,12 @@ audiocpp_cli --task align --family qwen3_forced_aligner --model models/Qwen3-For
 | `qwen3_tts.weight_type` | `native`, `f32`, `f16`, `bf16`, `q8_0` | `native` | TTS graph weight type. |
 | `qwen3_asr.weight_type` | `native`, `f32`, `f16`, `bf16`, `q8_0` | `native` | ASR thinker weight type. |
 | `qwen3_forced_aligner.weight_type` | `native`, `f32`, `f16`, `bf16`, `q8_0` | `native` | Aligner thinker weight type. |
+
+## Legacy tied embeddings (2026-10-07)
+
+Legacy qwen3_asr fine-tunes such as FormalASR may declare tied embeddings
+and omit thinker.lm_head.weight. The loader reuses token embeddings in this
+case, requiring output_size == vocab_size. A present independent head is
+retained; missing untied heads still fail. Validated through EchoASR public
+ABI on macOS arm64 Metal using Formal Q4 GGUF. Linux validation and upstream
+contribution remain pending; this is not a semantic quality claim.

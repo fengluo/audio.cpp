@@ -273,6 +273,28 @@ void Qwen3ASRSession::prepare(const runtime::SessionPreparationRequest & request
 }
 
 runtime::TaskResult Qwen3ASRSession::run(const runtime::TaskRequest & request) {
+    runtime::ScopedTaskExecutionControl execution_control(
+        execution_context(), request.execution_control);
+    runtime::throw_if_task_cancelled(request.execution_control);
+    runtime::report_task_progress(
+        request.execution_control, 0.0, "qwen3_asr.starting");
+    try {
+        auto result = run_impl(request);
+        runtime::throw_if_task_cancelled(request.execution_control);
+        runtime::report_task_progress(
+            request.execution_control, 1.0, "qwen3_asr.complete");
+        return result;
+    } catch (const runtime::TaskCancelled &) {
+        throw;
+    } catch (...) {
+        if (runtime::task_cancellation_requested(request.execution_control)) {
+            throw runtime::TaskCancelled();
+        }
+        throw;
+    }
+}
+
+runtime::TaskResult Qwen3ASRSession::run_impl(const runtime::TaskRequest & request) {
     require_prepared("Qwen3 ASR run()");
     if (task_.mode != runtime::RunMode::Offline) {
         throw std::runtime_error("Qwen3 ASR run() requires an offline session");
@@ -287,13 +309,13 @@ runtime::TaskResult Qwen3ASRSession::run(const runtime::TaskRequest & request) {
             empty.text_output = runtime::Transcript{"", request.text_input.has_value() ? request.text_input->language : ""};
             return empty;
         }
-        return run_single(make_request(request));
+        return run_single(make_request(request), 0.0, 1.0);
     }
     const auto & audio = *request.audio_input;
     if (chunks.size() <= 1) {
         auto item_request = request;
         item_request.audio_input = engine::audio::slice_audio_buffer(audio, chunks.front().source_span);
-        auto item = run_single(make_request(item_request));
+        auto item = run_single(make_request(item_request), 0.0, 1.0);
         std::vector<runtime::WordTimestamp> merged_words;
         const size_t merged_before = merged_words.size();
         engine::audio::append_chunk_word_timestamps(
@@ -318,11 +340,16 @@ runtime::TaskResult Qwen3ASRSession::run(const runtime::TaskRequest & request) {
     }
     runtime::TaskResult merged;
     std::ostringstream text;
-    for (size_t chunk_index = 0; chunk_index < chunks.size(); ++chunk_index) {
+    for (std::size_t chunk_index = 0; chunk_index < chunks.size(); ++chunk_index) {
         const auto & chunk = chunks[chunk_index];
         runtime::TaskRequest item_request = request;
         item_request.audio_input = engine::audio::slice_audio_buffer(audio, chunk.source_span);
-        auto item = run_single(make_request(item_request));
+        const double progress_start =
+            static_cast<double>(chunk_index) / static_cast<double>(chunks.size());
+        const double progress_end =
+            static_cast<double>(chunk_index + 1) / static_cast<double>(chunks.size());
+        auto item = run_single(
+            make_request(item_request), progress_start, progress_end);
         if (item.text_output.has_value() && !item.text_output->text.empty()) {
             if (text.tellp() > 0) {
                 text << ' ';
@@ -479,27 +506,52 @@ runtime::TaskResult Qwen3ASRSession::finalize() {
     return streaming_result_;
 }
 
-runtime::TaskResult Qwen3ASRSession::run_single(const Qwen3ASRRequest & asr_request) {
+runtime::TaskResult Qwen3ASRSession::run_single(
+    const Qwen3ASRRequest & asr_request,
+    double progress_start,
+    double progress_end) {
     const auto wall_start = Clock::now();
+    const auto report_progress = [&](double local_fraction, std::string_view stage) {
+        runtime::report_task_progress(
+            asr_request.execution_control,
+            progress_start + (progress_end - progress_start) * local_fraction,
+            stage);
+        runtime::throw_if_task_cancelled(asr_request.execution_control);
+    };
+    runtime::throw_if_task_cancelled(asr_request.execution_control);
     if (asr_request.generation.return_timestamps && forced_aligner_session_ == nullptr) {
         throw std::runtime_error(
             "Qwen3 ASR timestamp output requires --session-option "
             "qwen3_asr.forced_aligner_model_path=<path-to-Qwen3-ForcedAligner-0.6B>");
     }
     const auto frontend_start = Clock::now();
+    report_progress(0.02, "qwen3_asr.frontend");
     const auto features = frontend_.extract(asr_request.audio);
+    report_progress(0.12, "qwen3_asr.frontend");
     const auto frontend_end = Clock::now();
     const auto prompt_start = Clock::now();
     const auto prompt = prompt_builder_.build(asr_request, features.encoder_tokens);
+    report_progress(0.18, "qwen3_asr.prompt");
     const auto prompt_end = Clock::now();
     const auto encoder_start = Clock::now();
+    report_progress(0.20, "qwen3_asr.audio_encoder");
     const auto audio_embeddings = audio_encoder_.encode(features);
+    report_progress(0.45, "qwen3_asr.audio_encoder");
     const auto encoder_end = Clock::now();
     const auto thinker_start = Clock::now();
-    const auto tokens = thinker_.generate(prompt, audio_embeddings, asr_request.generation);
+    report_progress(0.50, "qwen3_asr.thinker");
+    const auto tokens = thinker_.generate(
+        prompt,
+        audio_embeddings,
+        asr_request.generation,
+        asr_request.execution_control,
+        progress_start + (progress_end - progress_start) * 0.50,
+        progress_start + (progress_end - progress_start) * 0.95);
+    report_progress(0.95, "qwen3_asr.thinker");
     const auto thinker_end = Clock::now();
     const auto postprocess_start = Clock::now();
     const auto decoded = postprocessor_.decode(tokens, asr_request);
+    report_progress(0.98, "qwen3_asr.postprocess");
     const auto postprocess_end = Clock::now();
 
     runtime::TaskResult result;
@@ -518,6 +570,7 @@ runtime::TaskResult Qwen3ASRSession::run_single(const Qwen3ASRRequest & asr_requ
             if (asr_request.generation.clamp_timestamps_to_audio) {
                 align_request.options["clamp_timestamps_to_audio"] = "true";
             }
+            align_request.execution_control = asr_request.execution_control;
             forced_aligner_session_->prepare(runtime::build_preparation_request(align_request));
             auto aligned = forced_aligner_session_->run(align_request);
             result.word_timestamps = std::move(aligned.word_timestamps);
@@ -728,6 +781,7 @@ Qwen3ASRRequest Qwen3ASRSession::make_request(const runtime::TaskRequest & reque
     }
     Qwen3ASRRequest out;
     out.audio = *request.audio_input;
+    out.execution_control = request.execution_control;
     out.generation.max_new_tokens = assets_->config.max_new_tokens;
     if (request.text_input.has_value()) {
         out.context = request.text_input->text;

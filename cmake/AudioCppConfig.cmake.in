@@ -1,0 +1,13 @@
+@PACKAGE_INIT@
+
+include(CMakeFindDependencyMacro)
+find_dependency(Threads)
+if (@AUDIOCPP_PACKAGE_OPENMP@)
+    find_dependency(OpenMP COMPONENTS C CXX)
+endif()
+
+include("${CMAKE_CURRENT_LIST_DIR}/AudioCppTargets.cmake")
+
+set(AudioCpp_MODEL_FAMILIES "@AUDIOCPP_ENABLED_MODELS@")
+set(AudioCpp_LINKED_MODELS "@AUDIOCPP_LINKED_MODELS@")
+check_required_components(AudioCpp)

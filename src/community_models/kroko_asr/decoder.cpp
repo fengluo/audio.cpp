@@ -361,7 +361,9 @@ void KrokoTransducerDecoder::join_scores(
                 encoder_frame[hidden] +
                 decoder_output[static_cast<size_t>(hidden)]);
     }
+#ifdef _OPENMP
 #pragma omp parallel for schedule(static) if (vocab >= 256)
+#endif
     for (int64_t token = 0; token < vocab; ++token) {
         double value =
             joiner_bias_[static_cast<size_t>(token)];

@@ -141,17 +141,23 @@ void apply_retrieval_blend(
         throw std::runtime_error("RVC retrieval feature shape mismatch");
     }
     constexpr size_t kNeighbors = 8;
+#ifdef _OPENMP
     const int worker_count = static_cast<int>(
         std::max<size_t>(
             1,
             std::min<size_t>(
                 {threads, static_cast<size_t>(frames), static_cast<size_t>(std::numeric_limits<int>::max())})));
 #pragma omp parallel num_threads(worker_count) if(frames >= 8)
+#else
+    (void) threads;
+#endif
     {
         std::vector<float> blended_frame(static_cast<size_t>(dim));
         std::array<float, kNeighbors> nearest_dist {};
         std::array<int64_t, kNeighbors> nearest_index {};
+#ifdef _OPENMP
 #pragma omp for schedule(static)
+#endif
         for (int64_t frame = 0; frame < frames; ++frame) {
             const auto * query = source_features.data() + static_cast<size_t>(frame * dim);
             int64_t best_list = 0;

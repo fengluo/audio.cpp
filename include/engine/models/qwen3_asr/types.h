@@ -3,6 +3,7 @@
 #include "engine/framework/runtime/session.h"
 
 #include <cstdint>
+#include <memory>
 #include <stdexcept>
 #include <string>
 #include <vector>
@@ -20,6 +21,7 @@ struct Qwen3ASRRequest {
     std::string context;
     std::string language;
     Qwen3ASRGenerationOptions generation;
+    std::shared_ptr<const runtime::TaskExecutionControl> execution_control;
 };
 
 struct Qwen3ASRResult {
