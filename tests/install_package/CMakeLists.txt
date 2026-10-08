@@ -6,3 +6,10 @@ find_package(AudioCpp CONFIG REQUIRED)
 
 add_executable(audiocpp_install_package_fixture main.cpp)
 target_link_libraries(audiocpp_install_package_fixture PRIVATE AudioCpp::engine_runtime)
+
+set(expected_families marblenet_vad silero_vad ${AudioCpp_MODEL_FAMILIES})
+list(REMOVE_DUPLICATES expected_families)
+list(SORT expected_families)
+list(JOIN expected_families "," expected_families_text)
+target_compile_definitions(audiocpp_install_package_fixture PRIVATE
+    AUDIOCPP_EXPECTED_FAMILIES="${expected_families_text}")

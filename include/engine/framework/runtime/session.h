@@ -225,6 +225,10 @@ struct TaskRequest {
     std::optional<VoiceCondition> voice = std::nullopt;
     std::vector<VoiceArtifact> input_artifacts;
     std::unordered_map<std::string, std::string> options;
+    /// List-valued options, kept apart from the single-valued ones so a family
+    /// reading either cannot silently see the other half-formed. The `*_list`
+    /// option types the spec schema already declares are carried here.
+    std::unordered_map<std::string, std::vector<std::string>> option_arrays;
     std::shared_ptr<const TaskExecutionControl> execution_control;
 };
 
@@ -239,6 +243,9 @@ struct SessionPreparationRequest {
     std::optional<Transcript> text = std::nullopt;
     std::optional<VoiceCondition> voice = std::nullopt;
     std::unordered_map<std::string, std::string> options;
+    /// See TaskRequest::option_arrays. Carried through preparation so a session
+    /// can size its graphs for what run() will actually be handed.
+    std::unordered_map<std::string, std::vector<std::string>> option_arrays;
 };
 
 struct VoiceActivityEvent {
@@ -324,6 +331,24 @@ public:
     ~IOfflineVoiceTaskSession() override = default;
 
     virtual TaskResult run(const TaskRequest & request) = 0;
+};
+
+class IBatchedOfflineVoiceTaskSession : public virtual IVoiceTaskSession {
+public:
+    using ResultCallback = std::function<void(size_t, TaskResult)>;
+
+    ~IBatchedOfflineVoiceTaskSession() override = default;
+
+    virtual std::vector<TaskResult> run_batch(const std::vector<TaskRequest> & requests) = 0;
+
+    virtual void run_batch(
+        const std::vector<TaskRequest> & requests,
+        const ResultCallback & on_result) {
+        auto results = run_batch(requests);
+        for (size_t index = 0; index < results.size(); ++index) {
+            on_result(index, std::move(results[index]));
+        }
+    }
 };
 
 class IStreamingVoiceTaskSession : public virtual IVoiceTaskSession {

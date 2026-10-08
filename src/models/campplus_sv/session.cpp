@@ -2,7 +2,7 @@
 
 #include "engine/framework/audio/campplus_fbank.h"
 #include "engine/framework/io/filesystem.h"
-#include "engine/framework/modules/speech_encoders/campplus_encoder.h"
+#include "engine/framework/modules/speaker_encoders/campplus_encoder.h"
 #include "engine/framework/runtime/options.h"
 #include "engine/framework/runtime/session.h"
 
