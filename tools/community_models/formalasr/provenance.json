@@ -1,0 +1,51 @@
+{
+  "archived_on": "2026-10-08",
+  "source": {
+    "repository": "TaurenMountain/FormalASR-0.6B",
+    "endpoint": "https://hf-mirror.com",
+    "revision": "702f3feb23d0ee8a327ba2d5882d2ecf1517d7f3",
+    "size_bytes": 1564926456,
+    "sha256": "4d767265a1809c2f3df8744084b2fe9452dd8f825a7a8dab5ff5cafba593c7f3"
+  },
+  "runtime": {
+    "audio_cpp_commit": "72c84209384204c75f6151cb44ea680a414fe7c9",
+    "worktree": "/tmp/echox-formalasr-runtime-20261006",
+    "patch_file": "legacy-tied-embedding.patch",
+    "patch_sha256": "c2055e18d7c101c955b979c1de8eb216072fbeebdda1057df8ad13bd603c920c",
+    "cmake_options": [
+      "AUDIOCPP_BUILD_APPS:BOOL=ON",
+      "AUDIOCPP_BUILD_NATIVE_MODEL_MANAGER:BOOL=OFF",
+      "AUDIOCPP_DEPLOYMENT_BUILD:BOOL=ON",
+      "AUDIOCPP_GGML_SOURCE_DIR:PATH=/Users/shawnxie/Workspaces/audio.cpp/external/ggml",
+      "AUDIOCPP_MODELS:STRING=qwen3_asr",
+      "AUDIOCPP_MODEL_SET:STRING=custom",
+      "CMAKE_BUILD_TYPE:STRING=Release",
+      "GGML_METAL:BOOL=ON",
+      "GGML_METAL_EMBED_LIBRARY:BOOL=ON",
+      "GGML_OPENMP:BOOL=OFF"
+    ],
+    "converter_sha256": "643c7df67f6ca38983e37402809e79f75ca47cfd4f6df92c7cb8b8a3755f6838",
+    "model_spec_sha256": "0ce44ba0f7fd3556eb0f2b18a2a7c6a5bfdabfd9f67cde719f57c513ec16ae3b"
+  },
+  "original_q4_conversion": {
+    "command": [
+      "/tmp/echox-formalasr-runtime-20261006/build/formal-metal/bin/audiocpp_gguf",
+      "--input",
+      "/Users/shawnxie/Library/Caches/EchoASR/experiments/formalasr-0.6b/source/model.safetensors",
+      "--root",
+      "/Users/shawnxie/Library/Caches/EchoASR/experiments/formalasr-0.6b/source",
+      "--output",
+      "/Users/shawnxie/Library/Caches/EchoASR/experiments/formalasr-0.6b/formal-q4_k.gguf",
+      "--type",
+      "q4_k",
+      "--family",
+      "qwen3_asr",
+      "--model-spec",
+      "/Users/shawnxie/Workspaces/audio.cpp/model_specs/qwen3_asr.json"
+    ],
+    "wall_ms": 17910.6869159732
+  },
+  "original_evidence_path": "/Users/shawnxie/Workspaces/echox-desktop/docs/research/artifacts/formalasr-2026-10-06/evidence.json",
+  "original_cache_path": "/Users/shawnxie/Library/Caches/EchoASR/experiments/formalasr-0.6b",
+  "local_artifacts_path": "model-artifacts/formalasr-0.6b"
+}

@@ -1,0 +1,11 @@
+FormalASR-0.6B audio.cpp Q4 deployment
+Source: TaurenMountain/FormalASR-0.6B
+Source revision: 702f3feb23d0ee8a327ba2d5882d2ecf1517d7f3
+Source license declaration: Apache-2.0
+https://huggingface.co/TaurenMountain/FormalASR-0.6B/blob/702f3feb23d0ee8a327ba2d5882d2ecf1517d7f3/README.md
+This deployment converts the source BF16 weights to audio.cpp GGUF Q4_K.
+It is an ASR artifact, not a Q4_K_M text model. Configuration and tokenizer
+resources are embedded in the GGUF. No client-side conversion is required.
+The original model authors retain their rights. This is a modified format
+and quantization of their artifact. The distribution URL is not yet published.
+Release publication must include the Apache-2.0 license text and source notice.

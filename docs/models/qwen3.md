@@ -331,3 +331,12 @@ case, requiring output_size == vocab_size. A present independent head is
 retained; missing untied heads still fail. Validated through EchoASR public
 ABI on macOS arm64 Metal using Formal Q4 GGUF. Linux validation and upstream
 contribution remain pending; this is not a semantic quality claim.
+
+## FormalASR conversion assets
+
+The historical FormalASR-0.6B Q4/Q8 recipe is maintained in
+[`tools/community_models/formalasr/`](../../tools/community_models/formalasr/README.md).
+It uses the existing `qwen3_asr` family and pins the October 6 converter/spec.
+Source weights and outputs are stored outside source repositories in the shared
+`model-artifacts/formalasr-0.6b` directory. Current runtime compatibility and
+semantic quality are separate from historical conversion reproducibility.

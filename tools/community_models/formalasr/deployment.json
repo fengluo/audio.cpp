@@ -1,0 +1,14 @@
+{
+  "filename": "formal-q4_k.gguf",
+  "format": "audio.cpp GGUF v3 with embedded config/tokenizer",
+  "id": "formalasr-0.6b",
+  "license": "Apache-2.0",
+  "quantization": "Q4_K (audio.cpp)",
+  "revision": "702f3feb23d0ee8a327ba2d5882d2ecf1517d7f3",
+  "runtime": "EchoASR ABI 1 / audio.cpp 72c84209384204c75f6151cb44ea680a414fe7c9",
+  "sha256": "fa5b216030d3fc4a316cbe8d90d17f58ed0f8660f8d3554b4778581e3ae5d1ba",
+  "size": 854796384,
+  "source": "TaurenMountain/FormalASR-0.6B",
+  "version": "audiocpp-q4-v1",
+  "url": null
+}

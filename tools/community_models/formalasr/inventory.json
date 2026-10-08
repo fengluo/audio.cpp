@@ -1,0 +1,173 @@
+{
+  "schema_version": 1,
+  "files": [
+    {
+      "root": "artifacts",
+      "path": "history/2026-10-06/bin/audiocpp_cli",
+      "bytes": 5247952,
+      "sha256": "d4966d384b1af4a44688b9ca96b6976278d4a35f5f6101f54f13cebb00fd5c51"
+    },
+    {
+      "root": "artifacts",
+      "path": "history/2026-10-06/bin/audiocpp_gguf",
+      "bytes": 1434848,
+      "sha256": "643c7df67f6ca38983e37402809e79f75ca47cfd4f6df92c7cb8b8a3755f6838"
+    },
+    {
+      "root": "artifacts",
+      "path": "history/2026-10-06/evidence/conversion-q4-command.json",
+      "bytes": 597,
+      "sha256": "a29c0702241d2095fd3f93a23c17968d368f57d6c288af181b604a8abb329185"
+    },
+    {
+      "root": "artifacts",
+      "path": "history/2026-10-06/evidence/conversion-q4.log",
+      "bytes": 245,
+      "sha256": "efc3d2eee8dafecc8c0af6b7dc8a5f24b0349f8496eed6368771dd4cb3b31896"
+    },
+    {
+      "root": "artifacts",
+      "path": "history/2026-10-06/evidence/conversion-q8.log",
+      "bytes": 245,
+      "sha256": "35eb2e375e780a36ede310e31c1ca31ac2feb7a08ec5ce98d805a460d5761114"
+    },
+    {
+      "root": "artifacts",
+      "path": "history/2026-10-06/evidence/download-verified.json",
+      "bytes": 256,
+      "sha256": "f4f9e923211ef2976b147a8d912172dc7072b0dbc96a69c3ddc020ac2a269781"
+    },
+    {
+      "root": "artifacts",
+      "path": "history/2026-10-06/evidence/q4-inspect.log",
+      "bytes": 192,
+      "sha256": "4c8ae86b7c3c31c214f413286a073124c15aac1c6939440d06fe62bc58357161"
+    },
+    {
+      "root": "artifacts",
+      "path": "audiocpp-q4-v1/formal-q4_k.gguf",
+      "bytes": 854796384,
+      "sha256": "fa5b216030d3fc4a316cbe8d90d17f58ed0f8660f8d3554b4778581e3ae5d1ba"
+    },
+    {
+      "root": "artifacts",
+      "path": "audiocpp-q8-v1/formal-q8_0.gguf",
+      "bytes": 997346400,
+      "sha256": "c2c09046605f85e441bf712006cac3c79c2358161a348d50a7895683ea81ac5b"
+    },
+    {
+      "root": "artifacts",
+      "path": "source/702f3feb23d0ee8a327ba2d5882d2ecf1517d7f3/source/.gitattributes",
+      "bytes": 1570,
+      "sha256": "34448b82c17d60fec9b65b1f093c115ddbaadc04beb1b0140b6bfed2e012a930"
+    },
+    {
+      "root": "artifacts",
+      "path": "source/702f3feb23d0ee8a327ba2d5882d2ecf1517d7f3/source/README.md",
+      "bytes": 3105,
+      "sha256": "0fca52b0e27a8b720ff58a2ec4b2da197a082df69e289ac41c885c0ccd784b9c"
+    },
+    {
+      "root": "artifacts",
+      "path": "source/702f3feb23d0ee8a327ba2d5882d2ecf1517d7f3/source/added_tokens.json",
+      "bytes": 1566,
+      "sha256": "de40784677cbd1843cabe5fbee078c7e042cd0b62155f0810af5a13842e5722a"
+    },
+    {
+      "root": "artifacts",
+      "path": "source/702f3feb23d0ee8a327ba2d5882d2ecf1517d7f3/source/chat_template.json",
+      "bytes": 1161,
+      "sha256": "75a8cfca24f00de72d796fbfed6858fc9614ef3dabd8696684cc3bc03a9c58ff"
+    },
+    {
+      "root": "artifacts",
+      "path": "source/702f3feb23d0ee8a327ba2d5882d2ecf1517d7f3/source/config.json",
+      "bytes": 6193,
+      "sha256": "76d3ae4601ce939830b2517f4a6cadb86cc51316c3900af6b020b051c21a478c"
+    },
+    {
+      "root": "artifacts",
+      "path": "source/702f3feb23d0ee8a327ba2d5882d2ecf1517d7f3/source/generation_config.json",
+      "bytes": 142,
+      "sha256": "1da527824d81e07118facff437e03f2e24a23311e3bdeb2368973fe77e5f275c"
+    },
+    {
+      "root": "artifacts",
+      "path": "source/702f3feb23d0ee8a327ba2d5882d2ecf1517d7f3/source/merges.txt",
+      "bytes": 1671853,
+      "sha256": "8831e4f1a044471340f7c0a83d7bd71306a5b867e95fd870f74d0c5308a904d5"
+    },
+    {
+      "root": "artifacts",
+      "path": "source/702f3feb23d0ee8a327ba2d5882d2ecf1517d7f3/source/model.safetensors",
+      "bytes": 1564926456,
+      "sha256": "4d767265a1809c2f3df8744084b2fe9452dd8f825a7a8dab5ff5cafba593c7f3"
+    },
+    {
+      "root": "artifacts",
+      "path": "source/702f3feb23d0ee8a327ba2d5882d2ecf1517d7f3/source/preprocessor_config.json",
+      "bytes": 330,
+      "sha256": "45e120a4eda2c20c5d7f2ea9354e63536bf35e27aa573fb7cdf78017b378770d"
+    },
+    {
+      "root": "artifacts",
+      "path": "source/702f3feb23d0ee8a327ba2d5882d2ecf1517d7f3/source/special_tokens_map.json",
+      "bytes": 1008,
+      "sha256": "7b376c510ccf9d88bb9bbee41dfc5052122e16e0dec1124a8d8983c59259a9f3"
+    },
+    {
+      "root": "artifacts",
+      "path": "source/702f3feb23d0ee8a327ba2d5882d2ecf1517d7f3/source/tokenizer.json",
+      "bytes": 11429499,
+      "sha256": "0499602714160467f2d68b910651d6216020689f1e016be87a2d0019ee3baeab"
+    },
+    {
+      "root": "artifacts",
+      "path": "source/702f3feb23d0ee8a327ba2d5882d2ecf1517d7f3/source/tokenizer_config.json",
+      "bytes": 12487,
+      "sha256": "4942d005604266809309cabc9f4e9cb89ce855d59b14681fdc0e1cc62ea26c4c"
+    },
+    {
+      "root": "artifacts",
+      "path": "source/702f3feb23d0ee8a327ba2d5882d2ecf1517d7f3/source/vocab.json",
+      "bytes": 2776833,
+      "sha256": "ca10d7e9fb3ed18575dd1e277a2579c16d108e32f27439684afa0e10b1440910"
+    },
+    {
+      "root": "recipe",
+      "path": "LICENSE.txt",
+      "bytes": 11358,
+      "sha256": "cfc7749b96f63bd31c3c42b5c471bf756814053e847c10f3eb003417bc523d30"
+    },
+    {
+      "root": "recipe",
+      "path": "NOTICE.txt",
+      "bytes": 740,
+      "sha256": "93612aeca8ae61932bdd0dd0587e909ab087822d9b9f8e7df391b79c8396cf58"
+    },
+    {
+      "root": "recipe",
+      "path": "deployment.json",
+      "bytes": 525,
+      "sha256": "f3466977f9435b5cd883597c0bebf6f8fa7d0581e31040e8f0c469d255c10eff"
+    },
+    {
+      "root": "recipe",
+      "path": "legacy-tied-embedding.patch",
+      "bytes": 1396,
+      "sha256": "c2055e18d7c101c955b979c1de8eb216072fbeebdda1057df8ad13bd603c920c"
+    },
+    {
+      "root": "recipe",
+      "path": "provenance.json",
+      "bytes": 2206,
+      "sha256": "1e0a849e0a40decc7ebd378b4c6d04b3627c7ed520de2017851f37e4a690844c"
+    },
+    {
+      "root": "recipe",
+      "path": "qwen3_asr.json",
+      "bytes": 5194,
+      "sha256": "0ce44ba0f7fd3556eb0f2b18a2a7c6a5bfdabfd9f67cde719f57c513ec16ae3b"
+    }
+  ]
+}
