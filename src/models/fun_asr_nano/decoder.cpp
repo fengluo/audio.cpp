@@ -694,11 +694,13 @@ struct FunAsrNanoQwen3DecoderRuntime::Impl {
     std::vector<float> logits = std::move(prefill.logits);
     timing_start = Clock::now();
     for (int64_t step = 0; step < options.max_new_tokens; ++step) {
+      if (options.before_decode_step) options.before_decode_step();
       if (options.capture_logits) {
         out.step_logits.push_back(logits);
       }
       const int32_t token = argmax_index(logits);
       if (is_eos(config, token)) {
+        out.ended_with_eos = true;
         break;
       }
       out.token_ids.push_back(token);

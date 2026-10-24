@@ -237,6 +237,9 @@ void FunAsrNanoSession::prepare(
 runtime::TaskResult
 FunAsrNanoSession::run(const runtime::TaskRequest &request) {
   require_prepared("Fun-ASR-Nano run()");
+  runtime::ScopedTaskExecutionControl execution_scope(
+      execution_context(), request.execution_control);
+  runtime::throw_if_task_cancelled(request.execution_control);
   validate_request_options(request.options);
   const auto chunks = audio_chunk_plan(request);
   if (chunks.empty()) {
@@ -281,6 +284,10 @@ FunAsrNanoSession::make_request(const runtime::TaskRequest &request) const {
 
   AsrRequest out;
   out.audio = *request.audio_input;
+  const auto execution_control = request.execution_control;
+  out.generation.before_decode_step = [execution_control] {
+    runtime::throw_if_task_cancelled(execution_control);
+  };
   out.prompt.language = "auto";
   out.generation.max_new_tokens = kDefaultMaxNewTokens;
   if (request.text_input.has_value()) {
@@ -387,6 +394,10 @@ runtime::TaskResult FunAsrNanoSession::run_single(const AsrRequest &request) {
   const auto decoder_start = Clock::now();
   const auto tokens =
       decoder_.generate(prompt, audio_embeddings, request.generation);
+  if (!tokens.ended_with_eos) {
+    throw std::runtime_error(
+        "Fun-ASR-Nano output reached max_new_tokens before EOS");
+  }
   const auto decoder_end = Clock::now();
 
   const auto decode_start = Clock::now();

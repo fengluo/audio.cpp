@@ -1,6 +1,7 @@
 #pragma once
 
 #include <cstdint>
+#include <functional>
 #include <string>
 #include <vector>
 
@@ -53,11 +54,13 @@ struct FunAsrNanoPrompt {
 struct FunAsrNanoGenerationOptions {
   int64_t max_new_tokens = 512;
   bool capture_logits = false;
+  std::function<void()> before_decode_step;
 };
 
 struct FunAsrNanoGeneratedTokens {
   std::vector<int32_t> token_ids;
   std::vector<std::vector<float>> step_logits;
+  bool ended_with_eos = false;
 };
 
 } // namespace engine::models::fun_asr_nano
